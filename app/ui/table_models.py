@@ -12,9 +12,9 @@ from app.services.utils import normalize_text, parse_vnd_int
 
 
 STATUS_COLORS = {
-    "matched": QColor("#e7f5ea"),
-    "review": QColor("#fff4cc"),
-    "unmatched": QColor("#fde8e8"),
+    "matched": QColor("#ffffff"),
+    "review": QColor("#fef3c7"),
+    "unmatched": QColor("#f4b2b8"),
 }
 
 
@@ -30,7 +30,7 @@ class TransactionsTableModel(QAbstractTableModel):
             for index, header in enumerate(headers)
             if any(
                 marker in header
-                for marker in ("金额", "余额", "Nợ", "Có", "Phí", "Thuế", "Số dư", "Total")
+                for marker in ("金额", "余额", "Nợ", "Có", "Chi", "Thu", "Phí", "Thuế", "Số dư", "Total")
             )
         }
 
@@ -64,7 +64,9 @@ class TransactionsTableModel(QAbstractTableModel):
         if role == Qt.ToolTipRole:
             status_key = row.status if row.status in ("matched", "review", "unmatched") else "unmatched"
             status_text = tr(self._language, status_key)
-            return f"{status_text}\n{row.match_reason or ''}".strip()
+            reasons = [segment.strip() for segment in (row.match_reason or "").splitlines() if segment.strip()]
+            reason_text = "\n".join(f"- {item}" for item in reasons)
+            return f"{status_text}\n{reason_text}".strip()
         if role == Qt.UserRole:
             return row
         if role == Qt.UserRole + 1:
@@ -139,7 +141,9 @@ class TransactionsFilterProxyModel(QSortFilterProxyModel):
     def filterAcceptsRow(self, source_row: int, source_parent: QModelIndex) -> bool:
         model: TransactionsTableModel = self.sourceModel()  # type: ignore[assignment]
         row = model.row_object(source_row)
-        if self._status_mode == "matched" and row.status == "unmatched":
+        if self._status_mode == "matched" and row.status != "matched":
+            return False
+        if self._status_mode == "review" and row.status != "review":
             return False
         if self._status_mode == "unmatched" and row.status != "unmatched":
             return False
@@ -148,8 +152,10 @@ class TransactionsFilterProxyModel(QSortFilterProxyModel):
         if self._flow_mode == "expense" and row.direction != "expense":
             return False
         if self._flow_mode == "tax":
-            vat_value = abs(getattr(row, "vat", 0))
-            if vat_value <= 0:
+            if hasattr(row, "vat"):
+                if abs(getattr(row, "vat", 0)) <= 0:
+                    return False
+            elif not bool(getattr(row, "matched_tax", False)):
                 return False
         if self._reference_mode != "all":
             if self._reference_mode not in row.reference_prefixes:

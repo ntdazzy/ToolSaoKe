@@ -4,9 +4,11 @@ import os
 import sys
 import logging
 
+from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import QApplication
 
 from app.logging_utils import get_log_file_path
+from app.resource_utils import logo_image_path
 from app.ui.main_window import MainWindow
 
 
@@ -24,6 +26,9 @@ def main() -> int:
     logger.info("Khởi động ứng dụng. Log file: %s", get_log_file_path())
     app = QApplication(sys.argv)
     app.setStyle("Fusion")
+    logo_path = logo_image_path()
+    if logo_path.exists():
+        app.setWindowIcon(QIcon(str(logo_path)))
     window = MainWindow()
     window.show()
     exit_code = app.exec()

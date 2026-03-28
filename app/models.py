@@ -47,6 +47,7 @@ class SystemTransaction:
     reference_tokens: set[str] = field(default_factory=set)
     reference_prefixes: set[str] = field(default_factory=set)
     has_tax: bool = False
+    matched_tax: bool = False
     status: str = "unmatched"
     confidence: int = 0
     match_reason: str = ""
@@ -78,6 +79,7 @@ class BankTransaction:
     reference_tokens: set[str] = field(default_factory=set)
     reference_prefixes: set[str] = field(default_factory=set)
     has_tax: bool = False
+    matched_tax: bool = False
     status: str = "unmatched"
     confidence: int = 0
     match_reason: str = ""

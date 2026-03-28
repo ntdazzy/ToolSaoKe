@@ -6,6 +6,20 @@ from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
 
+class SafeRotatingFileHandler(RotatingFileHandler):
+    def doRollover(self) -> None:  # type: ignore[override]
+        try:
+            super().doRollover()
+        except PermissionError:
+            # Another process may be holding the log file on Windows.
+            # Keep writing to the current file instead of crashing logging.
+            if self.stream is None:
+                self.stream = self._open()
+        except OSError:
+            if self.stream is None:
+                self.stream = self._open()
+
+
 def get_app_base_dir() -> Path:
     if getattr(sys, "frozen", False):
         return Path(sys.executable).resolve().parent
@@ -34,7 +48,7 @@ def setup_logging() -> Path:
     if existing_handler is not None:
         return log_file_path
 
-    file_handler = RotatingFileHandler(
+    file_handler = SafeRotatingFileHandler(
         log_file_path,
         maxBytes=3_000_000,
         backupCount=5,

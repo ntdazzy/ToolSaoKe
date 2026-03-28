@@ -24,6 +24,12 @@ from app.services.utils import (
 
 
 SYSTEM_HEADERS_LIMIT = 10
+BANK_FOOTER_MARKERS = (
+    "this paper is printed by techcombank electronic banking",
+    "phiếu này được in từ hệ thống ngân hàng điện tử của techcombank",
+    "ngày giờ in/",
+    "printed on",
+)
 logger = logging.getLogger(__name__)
 
 
@@ -118,6 +124,9 @@ def load_bank_transactions(path: str) -> tuple[list[str], list[BankTransaction],
         row.extend([None] * (len(headers) - len(row)))
         if not any(to_text(value) for value in row):
             continue
+        if _is_bank_footer_row(row):
+            logger.debug("Bỏ qua dòng footer sao kê tại excel_row=%s", row_number)
+            break
         request_dt = parse_datetime(row[0])
         transaction_date = parse_date(row[1])
         reference_number = compact_spaces(to_text(row[2]))
@@ -220,6 +229,13 @@ def _locate_bank_header_row(rows: list[list[object]]) -> int:
         ):
             return index
     raise ValueError("Khong tim thay dong tieu de cua file sao ke.")
+
+
+def _is_bank_footer_row(row: list[object]) -> bool:
+    combined = normalize_text(" ".join(to_text(value) for value in row if to_text(value)))
+    if not combined:
+        return False
+    return any(marker in combined for marker in BANK_FOOTER_MARKERS)
 
 
 def _parse_bank_metadata(rows: list[list[object]]) -> BankMetadata:

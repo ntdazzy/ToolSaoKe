@@ -2,7 +2,8 @@ from __future__ import annotations
 
 from collections import defaultdict
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import date, datetime
+from functools import lru_cache
 import logging
 from pathlib import Path
 import re
@@ -20,6 +21,8 @@ from app.services.utils import normalize_text, text_similarity
 MINIMUM_MATCH_SCORE = 50
 GREEN_THRESHOLD = 82
 SAFETY_GAP = 12
+STRICT_STAGES = ("reference", "voucher_unique", "derived_unique")
+FINAL_STAGE = "scored"
 logger = logging.getLogger(__name__)
 
 
@@ -28,6 +31,7 @@ class PairScore:
     score: int
     reasons: list[str]
     date_gap: int
+    date_source: str
     unique_group: bool
     has_reference: bool
     text_score: float
@@ -48,11 +52,12 @@ class ReconciliationService:
             len(system_rows),
             len(bank_rows),
         )
-        self._match_transactions(system_rows, bank_rows)
-        self._match_tax_aggregates(system_rows, bank_rows)
+
+        self._run_matching_cycles(system_rows, bank_rows)
         summary = self._build_summary(system_rows, bank_rows)
         logger.info(
-            "Đối soát xong. matched_system=%s | review_system=%s | unmatched_system=%s | matched_bank=%s | review_bank=%s | unmatched_bank=%s",
+            "Đối soát xong. matched_system=%s | review_system=%s | unmatched_system=%s | "
+            "matched_bank=%s | review_bank=%s | unmatched_bank=%s",
             summary.matched_system,
             summary.review_system,
             summary.unmatched_system,
@@ -72,120 +77,200 @@ class ReconciliationService:
             summary=summary,
         )
 
-    def _match_transactions(
+    def _run_matching_cycles(
         self,
         system_rows: list[SystemTransaction],
         bank_rows: list[BankTransaction],
     ) -> None:
+        iteration = 0
+        while True:
+            iteration += 1
+            progress = 0
+            for stage in STRICT_STAGES:
+                progress += self._match_transactions_pass(system_rows, bank_rows, stage, allow_review=False)
+            progress += self._match_tax_aggregates(system_rows, bank_rows)
+            logger.debug("Vòng dò nghiêm ngặt %s hoàn tất. progress=%s", iteration, progress)
+            if progress == 0:
+                break
+
+        final_progress = self._match_transactions_pass(system_rows, bank_rows, FINAL_STAGE, allow_review=True)
+        logger.debug("Vòng dò cuối cho các ca còn lại hoàn tất. progress=%s", final_progress)
+
+    def _match_transactions_pass(
+        self,
+        system_rows: list[SystemTransaction],
+        bank_rows: list[BankTransaction],
+        stage: str,
+        *,
+        allow_review: bool,
+    ) -> int:
         system_groups: dict[tuple[str, int], list[SystemTransaction]] = defaultdict(list)
         bank_groups: dict[tuple[str, int], list[BankTransaction]] = defaultdict(list)
+
         for row in system_rows:
-            if row.amount > 0:
+            if row.status == "unmatched" and row.amount > 0:
                 system_groups[(row.direction, row.amount)].append(row)
         for row in bank_rows:
-            if row.amount > 0:
+            if row.status == "unmatched" and row.amount > 0:
                 bank_groups[(row.direction, row.amount)].append(row)
-        logger.debug(
-            "Tạo nhóm đối soát theo hướng giao dịch và số tiền. system_groups=%s | bank_groups=%s",
-            len(system_groups),
-            len(bank_groups),
-        )
 
+        matched_count = 0
         for group_key in sorted(set(system_groups) | set(bank_groups)):
-            left_group = system_groups.get(group_key, [])
-            right_group = bank_groups.get(group_key, [])
-            if not left_group or not right_group:
-                if left_group or right_group:
-                    logger.debug(
-                        "Bỏ qua nhóm không có dữ liệu đối ứng. key=%s | system_count=%s | bank_count=%s",
-                        group_key,
-                        len(left_group),
-                        len(right_group),
-                    )
+            system_group = system_groups.get(group_key, [])
+            bank_group = bank_groups.get(group_key, [])
+            if not system_group or not bank_group:
                 continue
-            candidate_map: dict[tuple[str, str], PairScore] = {}
-            pair_scores: dict[tuple[str, str], PairScore] = {}
-            per_system_scores: dict[str, list[int]] = defaultdict(list)
-            per_bank_scores: dict[str, list[int]] = defaultdict(list)
-            system_lookup = {row.row_id: row for row in left_group}
-            bank_lookup = {row.row_id: row for row in right_group}
-            for system_row in left_group:
-                for bank_row in right_group:
-                    pair = self._score_pair(system_row, bank_row, len(left_group), len(right_group))
-                    pair_scores[(system_row.row_id, bank_row.row_id)] = pair
-            closest_system_gap = self._closest_date_gaps_by_system(pair_scores)
-            closest_bank_gap = self._closest_date_gaps_by_bank(pair_scores)
-            for key, pair in pair_scores.items():
-                system_id, bank_id = key
-                pair.mutual_closest = self._is_mutual_closest_date_pair(
-                    pair,
-                    closest_system_gap.get(system_id),
-                    closest_bank_gap.get(bank_id),
-                )
-                if pair.mutual_closest:
-                    pair.score += 8
-                    pair.reasons.append("Ngày giao dịch là cặp gần nhất hai chiều")
-                if not self._should_keep_candidate(pair):
-                    continue
-                candidate_map[key] = pair
-                per_system_scores[system_id].append(pair.score)
-                per_bank_scores[bank_id].append(pair.score)
-            logger.debug(
-                "Nhóm %s có %s ứng viên hợp lệ. system_count=%s | bank_count=%s",
-                group_key,
-                len(candidate_map),
-                len(left_group),
-                len(right_group),
+
+            candidate_map, per_system_scores, per_bank_scores = self._build_stage_candidates(
+                system_group,
+                bank_group,
+                stage,
             )
-            ordered_pairs = sorted(
-                candidate_map.items(),
-                key=lambda item: self._pair_priority(item[1]),
-                reverse=True,
-            )
-            for (system_id, bank_id), pair in ordered_pairs:
+            if not candidate_map:
+                continue
+
+            system_lookup = {row.row_id: row for row in system_group}
+            bank_lookup = {row.row_id: row for row in bank_group}
+            selected_pairs = self._optimal_pairings(system_group, bank_group, candidate_map)
+
+            for system_id, bank_id in selected_pairs:
+                pair = candidate_map[(system_id, bank_id)]
                 system_row = system_lookup[system_id]
                 bank_row = bank_lookup[bank_id]
-                if system_row.matched_bank_id or bank_row.matched_system_id:
-                    continue
-                system_gap = self._best_gap(per_system_scores.get(system_id, []), pair.score)
-                bank_gap = self._best_gap(per_bank_scores.get(bank_id, []), pair.score)
-                confident = (
-                    pair.has_reference
-                    or (pair.unique_group and pair.date_gap <= 1)
-                    or (pair.unique_group and pair.date_gap <= 3 and pair.text_score >= 0.45)
-                    or (pair.mutual_closest and pair.date_gap <= 1 and system_gap >= 6 and bank_gap >= 6)
-                    or (pair.score >= GREEN_THRESHOLD and system_gap >= SAFETY_GAP and bank_gap >= SAFETY_GAP)
+                status = self._resolve_status(
+                    pair,
+                    stage,
+                    allow_review,
+                    self._best_gap(per_system_scores.get(system_id, []), pair.score),
+                    self._best_gap(per_bank_scores.get(bank_id, []), pair.score),
                 )
-                status = "matched" if confident else "review"
-                system_row.status = status
-                bank_row.status = status
-                system_row.confidence = pair.score
-                bank_row.confidence = pair.score
-                system_row.match_reason = ", ".join(pair.reasons)
-                bank_row.match_reason = ", ".join(pair.reasons)
-                system_row.matched_bank_id = bank_row.row_id
-                bank_row.matched_system_id = system_row.row_id
-                system_row.matched_bank_row = bank_row.excel_row
-                bank_row.matched_system_row = system_row.excel_row
-                system_row.has_tax = system_row.has_tax or bank_row.has_tax
-                shared_prefixes = system_row.reference_prefixes | bank_row.reference_prefixes
-                system_row.reference_prefixes = shared_prefixes
-                bank_row.reference_prefixes = shared_prefixes
-                logger.debug(
-                    "Ghép cặp thành công. status=%s | system_row=%s | bank_row=%s | score=%s | amount=%s | reasons=%s",
-                    status,
-                    system_row.excel_row,
-                    bank_row.excel_row,
-                    pair.score,
-                    system_row.amount,
-                    " | ".join(pair.reasons),
-                )
+                self._apply_pair(system_row, bank_row, pair, status)
+                matched_count += 1
+
+        logger.debug("Pass %s ghép thêm %s cặp.", stage, matched_count)
+        return matched_count
+
+    def _build_stage_candidates(
+        self,
+        system_group: list[SystemTransaction],
+        bank_group: list[BankTransaction],
+        stage: str,
+    ) -> tuple[
+        dict[tuple[str, str], PairScore],
+        dict[str, list[int]],
+        dict[str, list[int]],
+    ]:
+        pair_scores: dict[tuple[str, str], PairScore] = {}
+        for system_row in system_group:
+            for bank_row in bank_group:
+                pair = self._score_pair(system_row, bank_row, len(system_group), len(bank_group))
+                pair_scores[(system_row.row_id, bank_row.row_id)] = pair
+
+        closest_system_gap = self._closest_date_stats_by_system(pair_scores)
+        closest_bank_gap = self._closest_date_stats_by_bank(pair_scores)
+
+        candidate_map: dict[tuple[str, str], PairScore] = {}
+        per_system_scores: dict[str, list[int]] = defaultdict(list)
+        per_bank_scores: dict[str, list[int]] = defaultdict(list)
+        for key, pair in pair_scores.items():
+            system_id, bank_id = key
+            pair.mutual_closest = self._is_mutual_closest_date_pair(
+                pair,
+                closest_system_gap.get(system_id),
+                closest_bank_gap.get(bank_id),
+            )
+            if pair.mutual_closest:
+                pair.score += 8
+                pair.reasons.append("Ngày giao dịch là cặp gần nhất hai chiều")
+            if not self._candidate_allowed_for_stage(pair, stage):
+                continue
+            candidate_map[key] = pair
+            per_system_scores[system_id].append(pair.score)
+            per_bank_scores[bank_id].append(pair.score)
+        return candidate_map, per_system_scores, per_bank_scores
+
+    @staticmethod
+    def _candidate_allowed_for_stage(pair: PairScore, stage: str) -> bool:
+        if stage == "reference":
+            return pair.has_reference
+        if stage == "voucher_unique":
+            return pair.date_gap == 0 and pair.date_source == "voucher" and (
+                pair.unique_group or pair.mutual_closest
+            )
+        if stage == "derived_unique":
+            return pair.date_gap == 0 and pair.date_source == "reference" and (
+                pair.unique_group or pair.mutual_closest
+            )
+        if stage == FINAL_STAGE:
+            return (
+                pair.score >= MINIMUM_MATCH_SCORE
+                or pair.date_gap == 0
+                or pair.date_gap == 1
+                or pair.mutual_closest
+                or (pair.unique_group and pair.date_gap <= 7)
+            )
+        return False
+
+    def _resolve_status(
+        self,
+        pair: PairScore,
+        stage: str,
+        allow_review: bool,
+        system_gap: int,
+        bank_gap: int,
+    ) -> str:
+        if not allow_review:
+            return "matched"
+
+        confident = (
+            pair.has_reference
+            or (pair.unique_group and pair.date_gap <= 1)
+            or (pair.unique_group and pair.date_gap <= 3 and pair.text_score >= 0.45)
+            or (pair.mutual_closest and pair.date_gap <= 1 and system_gap >= 6 and bank_gap >= 6)
+            or (pair.score >= GREEN_THRESHOLD and system_gap >= SAFETY_GAP and bank_gap >= SAFETY_GAP)
+        )
+        if stage == FINAL_STAGE and confident:
+            return "matched"
+        return "review"
+
+    def _apply_pair(
+        self,
+        system_row: SystemTransaction,
+        bank_row: BankTransaction,
+        pair: PairScore,
+        status: str,
+    ) -> None:
+        bank_has_vat = abs(getattr(bank_row, "vat", 0)) > 0
+        system_row.status = status
+        bank_row.status = status
+        system_row.confidence = pair.score
+        bank_row.confidence = pair.score
+        system_row.match_reason = "\n".join(pair.reasons)
+        bank_row.match_reason = "\n".join(pair.reasons)
+        system_row.matched_bank_id = bank_row.row_id
+        bank_row.matched_system_id = system_row.row_id
+        system_row.matched_bank_row = bank_row.excel_row
+        bank_row.matched_system_row = system_row.excel_row
+        system_row.has_tax = system_row.has_tax or bank_row.has_tax
+        system_row.matched_tax = system_row.matched_tax or bank_has_vat
+        bank_row.matched_tax = bank_row.matched_tax or bank_has_vat
+        shared_prefixes = system_row.reference_prefixes | bank_row.reference_prefixes
+        system_row.reference_prefixes = shared_prefixes
+        bank_row.reference_prefixes = shared_prefixes
+        logger.debug(
+            "Ghép cặp thành công. status=%s | system_row=%s | bank_row=%s | score=%s | reasons=%s",
+            status,
+            system_row.excel_row,
+            bank_row.excel_row,
+            pair.score,
+            " | ".join(pair.reasons),
+        )
 
     def _match_tax_aggregates(
         self,
         system_rows: list[SystemTransaction],
         bank_rows: list[BankTransaction],
-    ) -> None:
+    ) -> int:
         unmatched_system_rows = [
             row for row in system_rows if row.status == "unmatched" and row.direction == "expense"
         ]
@@ -195,9 +280,9 @@ class ReconciliationService:
             if row.status == "unmatched" and row.direction == "expense" and abs(getattr(row, "vat", 0)) > 0
         ]
         if not unmatched_system_rows or not unmatched_tax_bank_rows:
-            return
+            return 0
 
-        bank_groups: dict[tuple[object, str], list[BankTransaction]] = defaultdict(list)
+        bank_groups: dict[tuple[date | None, str], list[BankTransaction]] = defaultdict(list)
         for bank_row in unmatched_tax_bank_rows:
             bank_groups[(self._bank_effective_date(bank_row), self._tax_group_key(bank_row))].append(bank_row)
 
@@ -238,9 +323,10 @@ class ReconciliationService:
 
         if matched_group_count:
             logger.info(
-                "Đã ghép bổ sung %s nhóm thuế/VAT sau vòng đối soát chính.",
+                "Đã ghép bổ sung %s nhóm thuế/VAT sau vòng dò nghiêm ngặt.",
                 matched_group_count,
             )
+        return matched_group_count
 
     def _mark_tax_group_match(
         self,
@@ -260,6 +346,7 @@ class ReconciliationService:
         system_row.confidence = confidence
         system_row.match_reason = reason
         system_row.has_tax = True
+        system_row.matched_tax = True
         system_row.matched_bank_id = first_bank_row.row_id
         system_row.matched_bank_row = first_bank_row.excel_row
         shared_prefixes = set(system_row.reference_prefixes)
@@ -267,6 +354,7 @@ class ReconciliationService:
             bank_row.status = status
             bank_row.confidence = confidence
             bank_row.match_reason = reason
+            bank_row.matched_tax = True
             bank_row.matched_system_id = system_row.row_id
             bank_row.matched_system_row = system_row.excel_row
             shared_prefixes |= bank_row.reference_prefixes
@@ -275,7 +363,7 @@ class ReconciliationService:
             bank_row.reference_prefixes = shared_prefixes
 
     @staticmethod
-    def _bank_effective_date(bank_row: BankTransaction):
+    def _bank_effective_date(bank_row: BankTransaction) -> date | None:
         if bank_row.transaction_date is not None:
             return bank_row.transaction_date
         if bank_row.requesting_datetime is not None:
@@ -302,21 +390,23 @@ class ReconciliationService:
         if reference_overlap:
             score += 40
             reasons.append(f"Trùng mã tham chiếu: {', '.join(sorted(reference_overlap))}")
-        date_gap = self._date_gap(system_row, bank_row)
+
+        date_gap, date_source = self._date_gap_info(system_row, bank_row)
         if date_gap == 0:
             score += 24
-            reasons.append("Ngày giao dịch trùng ngày")
+            reasons.append(self._date_reason(date_source, "same"))
         elif date_gap == 1:
             score += 18
-            reasons.append("Ngày giao dịch lệch 1 ngày")
+            reasons.append(self._date_reason(date_source, "near_1"))
         elif date_gap <= 3:
             score += 12
-            reasons.append("Ngày giao dịch gần nhau")
+            reasons.append(self._date_reason(date_source, "near"))
         elif date_gap <= 7:
             score += 6
-            reasons.append("Ngày giao dịch có thể chấp nhận")
+            reasons.append(self._date_reason(date_source, "acceptable"))
         elif date_gap <= 15:
             score += 2
+
         text_score = text_similarity(
             f"{system_row.summary} {system_row.counterpart_account}",
             f"{bank_row.description} {bank_row.remitter_account_name} {bank_row.reference_number}",
@@ -330,77 +420,172 @@ class ReconciliationService:
         elif text_score >= 0.3:
             score += 6
             reasons.append("Mô tả đối ứng có điểm gần nhau")
+
         if system_row.has_tax and bank_row.has_tax:
             score += 8
             reasons.append("Cùng có dấu hiệu VAT/thuế")
+
         unique_group = system_group_size == 1 and bank_group_size == 1
         if unique_group:
             score += 10
             reasons.append("Nhóm số tiền này là duy nhất")
+
         if system_row.direction == "income" and "收款" in system_row.summary:
             score += 4
         if system_row.direction == "expense" and any(
             marker in system_row.summary for marker in ("支付", "付款", "利息", "取现金")
         ):
             score += 4
+
         return PairScore(
             score=score,
             reasons=reasons,
             date_gap=date_gap,
+            date_source=date_source,
             unique_group=unique_group,
             has_reference=bool(reference_overlap),
             text_score=text_score,
         )
 
-    @staticmethod
-    def _date_gap(system_row: SystemTransaction, bank_row: BankTransaction) -> int:
-        bank_date = bank_row.transaction_date
-        if bank_date is None and bank_row.requesting_datetime is not None:
-            bank_date = bank_row.requesting_datetime.date()
-        if system_row.voucher_date is None or bank_date is None:
-            return 99
-        return abs((system_row.voucher_date - bank_date).days)
+    @classmethod
+    def _date_gap_info(cls, system_row: SystemTransaction, bank_row: BankTransaction) -> tuple[int, str]:
+        bank_date = cls._bank_effective_date(bank_row)
+        if bank_date is None:
+            return 99, "missing"
+        candidates: list[tuple[int, str]] = []
+        if system_row.voucher_date is not None:
+            candidates.append((abs((system_row.voucher_date - bank_date).days), "voucher"))
+        for reference_date in cls._system_reference_dates(system_row):
+            candidates.append((abs((reference_date - bank_date).days), "reference"))
+        if not candidates:
+            return 99, "missing"
+        return min(candidates, key=lambda item: (item[0], 0 if item[1] == "voucher" else 1))
 
     @staticmethod
-    def _closest_date_gaps_by_system(pair_scores: dict[tuple[str, str], PairScore]) -> dict[str, int]:
-        gaps: dict[str, int] = {}
+    def _date_reason(source: str, level: str) -> str:
+        if source == "reference":
+            labels = {
+                "same": "Ngày theo mã nội bộ trùng ngày",
+                "near_1": "Ngày theo mã nội bộ lệch 1 ngày",
+                "near": "Ngày theo mã nội bộ gần nhau",
+                "acceptable": "Ngày theo mã nội bộ có thể chấp nhận",
+            }
+        else:
+            labels = {
+                "same": "Ngày giao dịch trùng ngày",
+                "near_1": "Ngày giao dịch lệch 1 ngày",
+                "near": "Ngày giao dịch gần nhau",
+                "acceptable": "Ngày giao dịch có thể chấp nhận",
+            }
+        return labels[level]
+
+    @staticmethod
+    def _system_reference_dates(system_row: SystemTransaction) -> set[date]:
+        dates: set[date] = set()
+        for token in system_row.reference_tokens:
+            match = re.match(r"SK(\d{8})-\d+$", token)
+            if not match:
+                continue
+            try:
+                dates.add(datetime.strptime(match.group(1), "%Y%m%d").date())
+            except ValueError:
+                continue
+        return dates
+
+    @staticmethod
+    def _closest_date_stats_by_system(pair_scores: dict[tuple[str, str], PairScore]) -> dict[str, tuple[int, int]]:
+        gaps: dict[str, tuple[int, int]] = {}
         for (system_id, _bank_id), pair in pair_scores.items():
-            current_gap = gaps.get(system_id, 999)
-            if pair.date_gap < current_gap:
-                gaps[system_id] = pair.date_gap
+            current = gaps.get(system_id)
+            if current is None or pair.date_gap < current[0]:
+                gaps[system_id] = (pair.date_gap, 1)
+            elif pair.date_gap == current[0]:
+                gaps[system_id] = (current[0], current[1] + 1)
         return gaps
 
     @staticmethod
-    def _closest_date_gaps_by_bank(pair_scores: dict[tuple[str, str], PairScore]) -> dict[str, int]:
-        gaps: dict[str, int] = {}
+    def _closest_date_stats_by_bank(pair_scores: dict[tuple[str, str], PairScore]) -> dict[str, tuple[int, int]]:
+        gaps: dict[str, tuple[int, int]] = {}
         for (_system_id, bank_id), pair in pair_scores.items():
-            current_gap = gaps.get(bank_id, 999)
-            if pair.date_gap < current_gap:
-                gaps[bank_id] = pair.date_gap
+            current = gaps.get(bank_id)
+            if current is None or pair.date_gap < current[0]:
+                gaps[bank_id] = (pair.date_gap, 1)
+            elif pair.date_gap == current[0]:
+                gaps[bank_id] = (current[0], current[1] + 1)
         return gaps
 
     @staticmethod
     def _is_mutual_closest_date_pair(
         pair: PairScore,
-        system_gap: int | None,
-        bank_gap: int | None,
+        system_gap: tuple[int, int] | None,
+        bank_gap: tuple[int, int] | None,
     ) -> bool:
         return (
             pair.date_gap <= 3
             and system_gap is not None
             and bank_gap is not None
-            and pair.date_gap == system_gap
-            and pair.date_gap == bank_gap
+            and pair.date_gap == system_gap[0]
+            and pair.date_gap == bank_gap[0]
+            and system_gap[1] == 1
+            and bank_gap[1] == 1
         )
 
-    @staticmethod
-    def _should_keep_candidate(pair: PairScore) -> bool:
+    def _optimal_pairings(
+        self,
+        system_group: list[SystemTransaction],
+        bank_group: list[BankTransaction],
+        candidate_map: dict[tuple[str, str], PairScore],
+    ) -> list[tuple[str, str]]:
+        if not candidate_map:
+            return []
+
+        transpose = len(system_group) > len(bank_group)
+        primary_ids = [row.row_id for row in (bank_group if transpose else system_group)]
+        secondary_ids = [row.row_id for row in (system_group if transpose else bank_group)]
+        secondary_index = {row_id: index for index, row_id in enumerate(secondary_ids)}
+        options_by_primary: dict[str, list[tuple[int, str, str, PairScore]]] = defaultdict(list)
+
+        for (system_id, bank_id), pair in candidate_map.items():
+            primary_id = bank_id if transpose else system_id
+            secondary_id = system_id if transpose else bank_id
+            options_by_primary[primary_id].append((secondary_index[secondary_id], system_id, bank_id, pair))
+
+        for options in options_by_primary.values():
+            options.sort(key=lambda item: self._pair_priority(item[3]), reverse=True)
+
+        @lru_cache(maxsize=None)
+        def solve(position: int, used_mask: int) -> tuple[int, int, int, tuple[tuple[str, str], ...]]:
+            if position >= len(primary_ids):
+                return (0, 0, 0, ())
+
+            best = solve(position + 1, used_mask)
+            primary_id = primary_ids[position]
+            for secondary_pos, system_id, bank_id, pair in options_by_primary.get(primary_id, []):
+                if used_mask & (1 << secondary_pos):
+                    continue
+                tail = solve(position + 1, used_mask | (1 << secondary_pos))
+                candidate = (
+                    tail[0] + pair.score,
+                    tail[1] + 1,
+                    tail[2] + self._pair_tie_score(pair),
+                    ((system_id, bank_id),) + tail[3],
+                )
+                if candidate[:3] > best[:3]:
+                    best = candidate
+            return best
+
+        return list(solve(0, 0)[3])
+
+    def _pair_tie_score(self, pair: PairScore) -> int:
+        priority = self._pair_priority(pair)
         return (
-            pair.score >= MINIMUM_MATCH_SCORE
-            or pair.date_gap == 0
-            or pair.date_gap == 1
-            or pair.mutual_closest
-            or (pair.unique_group and pair.date_gap <= 7)
+            (1_000_000 if priority[0] else 0)
+            + (100_000 if priority[1] else 0)
+            + (10_000 if priority[2] else 0)
+            + (1_000 if priority[3] else 0)
+            + max(0, 200 - pair.date_gap)
+            + max(0, pair.score) * 5
+            + int(pair.text_score * 100)
         )
 
     @staticmethod

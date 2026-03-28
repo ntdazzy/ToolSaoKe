@@ -32,3 +32,4 @@ File/*.csv
 # OS files
 .DS_Store
 Thumbs.db
+data/logs/tool_doi_soat.log
