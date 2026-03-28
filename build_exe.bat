@@ -11,8 +11,8 @@ if not exist "%PYTHON_EXE%" (
 )
 
 "%PYTHON_EXE%" -m pip install -r requirements.txt
-"%PYTHON_EXE%" -m PyInstaller --noconfirm --windowed --name ToolDoiSoatSaoKe --clean main.py
+"%PYTHON_EXE%" -m PyInstaller --noconfirm --windowed --name BSRv1.0 --clean main.py
 
 echo.
-echo File exe nam trong thu muc dist\ToolDoiSoatSaoKe
+echo File exe nam trong thu muc dist\BSRv1.0
 endlocal

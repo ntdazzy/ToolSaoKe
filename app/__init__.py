@@ -5,6 +5,8 @@ from __future__ import annotations
 import os
 import sys
 
+from app.logging_utils import setup_logging
+
 
 def _configure_utf8_stdio() -> None:
     os.environ.setdefault("PYTHONUTF8", "1")
@@ -18,3 +20,4 @@ def _configure_utf8_stdio() -> None:
 
 
 _configure_utf8_stdio()
+setup_logging()

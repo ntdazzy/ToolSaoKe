@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import os
 import sys
+import logging
 
 from PySide6.QtWidgets import QApplication
 
+from app.logging_utils import get_log_file_path
 from app.ui.main_window import MainWindow
 
 
@@ -18,11 +20,15 @@ def _configure_utf8() -> None:
 
 def main() -> int:
     _configure_utf8()
+    logger = logging.getLogger(__name__)
+    logger.info("Khởi động ứng dụng. Log file: %s", get_log_file_path())
     app = QApplication(sys.argv)
     app.setStyle("Fusion")
     window = MainWindow()
     window.show()
-    return app.exec()
+    exit_code = app.exec()
+    logger.info("Ứng dụng đóng với mã thoát %s", exit_code)
+    return exit_code
 
 
 if __name__ == "__main__":

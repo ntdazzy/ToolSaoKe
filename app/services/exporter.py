@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 from copy import copy
+import logging
 from pathlib import Path
 
 from openpyxl import Workbook, load_workbook
 from openpyxl.styles import PatternFill
 
 UNMATCHED_FILL = PatternFill(fill_type="solid", start_color="FCA5A5", end_color="FCA5A5")
+logger = logging.getLogger(__name__)
 
 
 def export_system_rows(
@@ -19,6 +21,13 @@ def export_system_rows(
     attached_statement_path: str | None = None,
     attached_statement_sheet_name: str = "SaoKeGoc",
 ) -> int:
+    logger.info(
+        "Bắt đầu xuất Excel. output=%s | rows=%s | highlight_unmatched=%s | attach_statement=%s",
+        output_path,
+        len(rows),
+        highlight_unmatched,
+        bool(attached_statement_path),
+    )
     workbook = Workbook()
     sheet = workbook.active
     sheet.title = sheet_name
@@ -33,6 +42,7 @@ def export_system_rows(
                 cell.fill = UNMATCHED_FILL
     if exported_rows == 0:
         workbook.close()
+        logger.warning("Không có dòng nào để xuất. output=%s", output_path)
         raise ValueError("no-rows")
     for column_cells in sheet.columns:
         max_length = max(len(str(cell.value or "")) for cell in column_cells)
@@ -42,6 +52,7 @@ def export_system_rows(
     Path(output_path).parent.mkdir(parents=True, exist_ok=True)
     workbook.save(output_path)
     workbook.close()
+    logger.info("Xuất Excel thành công. output=%s | exported_rows=%s", output_path, exported_rows)
     return exported_rows
 
 
@@ -61,6 +72,11 @@ def _append_statement_sheet(
     statement_path: str,
     target_sheet_name: str,
 ) -> None:
+    logger.info(
+        "Bắt đầu đính kèm sheet sao kê gốc. source=%s | target_sheet=%s",
+        statement_path,
+        target_sheet_name,
+    )
     source_workbook = load_workbook(statement_path)
     try:
         source_sheet = source_workbook.worksheets[0]
@@ -93,5 +109,10 @@ def _append_statement_sheet(
             target_sheet.auto_filter.ref = source_sheet.auto_filter.ref
         if source_sheet.sheet_view:
             target_sheet.sheet_view.showGridLines = source_sheet.sheet_view.showGridLines
+        logger.info(
+            "Đã đính kèm sheet sao kê gốc. rows=%s | cols=%s",
+            source_sheet.max_row,
+            source_sheet.max_column,
+        )
     finally:
         source_workbook.close()

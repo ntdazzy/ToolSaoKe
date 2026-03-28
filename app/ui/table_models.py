@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import date
 from typing import Any
 
 from PySide6.QtCore import QAbstractTableModel, QModelIndex, QSortFilterProxyModel, Qt
@@ -41,27 +42,21 @@ class TransactionsTableModel(QAbstractTableModel):
         return 0 if parent.isValid() else len(self._rows)
 
     def columnCount(self, parent: QModelIndex = QModelIndex()) -> int:
-        return 0 if parent.isValid() else len(self._headers) + 1
+        return 0 if parent.isValid() else len(self._headers)
 
     def data(self, index: QModelIndex, role: int = Qt.DisplayRole) -> Any:
         if not index.isValid():
             return None
         row = self._rows[index.row()]
         if role == Qt.DisplayRole:
-            if index.column() == 0:
-                return tr(self._language, "view")
-            return row.display_values[index.column() - 1]
+            return row.display_values[index.column()]
         if role == Qt.TextAlignmentRole:
-            if index.column() == 0:
-                return int(Qt.AlignCenter | Qt.AlignVCenter)
-            if index.column() - 1 in self._numeric_columns:
+            if index.column() in self._numeric_columns:
                 return int(Qt.AlignRight | Qt.AlignVCenter)
             return int(Qt.AlignLeft | Qt.AlignVCenter)
         if role == Qt.ForegroundRole:
-            if index.column() == 0:
-                return None
-            if index.column() - 1 in self._numeric_columns:
-                value = row.display_values[index.column() - 1]
+            if index.column() in self._numeric_columns:
+                value = row.display_values[index.column()]
                 if parse_vnd_int(value) < 0:
                     return QColor("#dc2626")
         if role == Qt.BackgroundRole:
@@ -75,10 +70,8 @@ class TransactionsTableModel(QAbstractTableModel):
         if role == Qt.UserRole + 1:
             return row.row_id
         if role == Qt.UserRole + 2:
-            if index.column() == 0:
-                return 0
-            value = row.display_values[index.column() - 1]
-            if index.column() - 1 in self._numeric_columns:
+            value = row.display_values[index.column()]
+            if index.column() in self._numeric_columns:
                 return parse_vnd_int(value)
             return normalize_text(value)
         return None
@@ -92,9 +85,7 @@ class TransactionsTableModel(QAbstractTableModel):
         if role != Qt.DisplayRole:
             return None
         if orientation == Qt.Horizontal:
-            if section == 0:
-                return tr(self._language, "action")
-            return self._headers[section - 1]
+            return self._headers[section]
         return section + 1
 
     def row_object(self, row_index: int) -> object:
@@ -116,6 +107,8 @@ class TransactionsFilterProxyModel(QSortFilterProxyModel):
         self._reference_mode = "all"
         self._search_text = ""
         self._search_column = -1
+        self._date_from: date | None = None
+        self._date_to: date | None = None
         self.setDynamicSortFilter(True)
 
     def set_status_mode(self, mode: str) -> None:
@@ -138,6 +131,11 @@ class TransactionsFilterProxyModel(QSortFilterProxyModel):
         self._search_column = value
         self.invalidateFilter()
 
+    def set_date_range(self, date_from: date | None, date_to: date | None) -> None:
+        self._date_from = date_from
+        self._date_to = date_to
+        self.invalidateFilter()
+
     def filterAcceptsRow(self, source_row: int, source_parent: QModelIndex) -> bool:
         model: TransactionsTableModel = self.sourceModel()  # type: ignore[assignment]
         row = model.row_object(source_row)
@@ -149,10 +147,20 @@ class TransactionsFilterProxyModel(QSortFilterProxyModel):
             return False
         if self._flow_mode == "expense" and row.direction != "expense":
             return False
-        if self._flow_mode == "tax" and not row.has_tax:
-            return False
+        if self._flow_mode == "tax":
+            vat_value = abs(getattr(row, "vat", 0))
+            if vat_value <= 0:
+                return False
         if self._reference_mode != "all":
             if self._reference_mode not in row.reference_prefixes:
+                return False
+        if self._date_from is not None or self._date_to is not None:
+            row_date = self._row_date(row)
+            if row_date is None:
+                return False
+            if self._date_from is not None and row_date < self._date_from:
+                return False
+            if self._date_to is not None and row_date > self._date_to:
                 return False
         if self._search_text:
             values = row.display_values
@@ -163,6 +171,19 @@ class TransactionsFilterProxyModel(QSortFilterProxyModel):
             if self._search_text not in haystack:
                 return False
         return True
+
+    @staticmethod
+    def _row_date(row) -> date | None:
+        voucher_date = getattr(row, "voucher_date", None)
+        if voucher_date is not None:
+            return voucher_date
+        transaction_date = getattr(row, "transaction_date", None)
+        if transaction_date is not None:
+            return transaction_date
+        requesting_datetime = getattr(row, "requesting_datetime", None)
+        if requesting_datetime is not None:
+            return requesting_datetime.date()
+        return None
 
 
 class ActionButtonDelegate(QStyledItemDelegate):

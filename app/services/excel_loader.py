@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import re
 from pathlib import Path
 
@@ -23,9 +24,11 @@ from app.services.utils import (
 
 
 SYSTEM_HEADERS_LIMIT = 10
+logger = logging.getLogger(__name__)
 
 
 def load_system_transactions(path: str) -> tuple[list[str], list[SystemTransaction]]:
+    logger.info("Bắt đầu đọc file hệ thống: %s", path)
     workbook = xlrd.open_workbook(path)
     sheet = workbook.sheet_by_index(0)
     headers = [
@@ -87,10 +90,20 @@ def load_system_transactions(path: str) -> tuple[list[str], list[SystemTransacti
                 has_tax=contains_tax_keywords(summary, counterpart_account, data_source),
             )
         )
+    income_count = sum(1 for row in rows if row.direction == "income")
+    expense_count = sum(1 for row in rows if row.direction == "expense")
+    logger.info(
+        "Đọc xong file hệ thống: rows=%s, income=%s, expense=%s, headers=%s",
+        len(rows),
+        income_count,
+        expense_count,
+        headers,
+    )
     return headers, rows
 
 
 def load_bank_transactions(path: str) -> tuple[list[str], list[BankTransaction], BankMetadata]:
+    logger.info("Bắt đầu đọc file sao kê: %s", path)
     workbook = load_workbook(filename=path, data_only=True, read_only=True)
     sheet = workbook.worksheets[0]
     all_rows = [list(row) for row in sheet.iter_rows(values_only=True)]
@@ -173,6 +186,28 @@ def load_bank_transactions(path: str) -> tuple[list[str], list[BankTransaction],
             )
         )
     workbook.close()
+    income_count = sum(1 for row in transactions if row.direction == "income")
+    expense_count = sum(1 for row in transactions if row.direction == "expense")
+    tax_count = sum(1 for row in transactions if row.has_tax)
+    logger.info(
+        "Đọc xong file sao kê: rows=%s, income=%s, expense=%s, tax_rows=%s, header_row=%s",
+        len(transactions),
+        income_count,
+        expense_count,
+        tax_count,
+        header_idx + 1,
+    )
+    logger.debug(
+        "Metadata sao kê: account=%s, account_name=%s, period=%s -> %s, totals=(debits=%s, credits=%s, fees=%s, vat=%s)",
+        metadata.account_number,
+        metadata.account_name,
+        metadata.from_date,
+        metadata.to_date,
+        metadata.total_debits,
+        metadata.total_credits,
+        metadata.total_fees,
+        metadata.total_vat,
+    )
     return headers, transactions, metadata
 
 

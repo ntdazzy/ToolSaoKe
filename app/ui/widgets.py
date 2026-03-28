@@ -4,6 +4,7 @@ from PySide6.QtCore import QEvent, QRect, Qt, Signal
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QFrame,
+    QHeaderView,
     QHBoxLayout,
     QLabel,
     QProgressBar,
@@ -22,6 +23,8 @@ class FrozenTableView(QTableView):
         self._frozen_view.setFocusPolicy(Qt.NoFocus)
         self._frozen_view.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self._frozen_view.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self._frozen_view.setSelectionBehavior(QAbstractItemView.SelectRows)
+        self._frozen_view.setSelectionMode(QAbstractItemView.SingleSelection)
         self._frozen_view.verticalHeader().hide()
         self.viewport().stackUnder(self._frozen_view)
         self.setHorizontalScrollMode(QAbstractItemView.ScrollPerPixel)
@@ -35,8 +38,8 @@ class FrozenTableView(QTableView):
             self._frozen_view.verticalScrollBar().setValue
         )
         self._frozen_view.verticalScrollBar().valueChanged.connect(self.verticalScrollBar().setValue)
-        self.clicked.connect(self._handle_click)
-        self._frozen_view.clicked.connect(self._handle_click)
+        self.doubleClicked.connect(self._handle_double_click)
+        self._frozen_view.doubleClicked.connect(self._handle_double_click)
 
     def setModel(self, model) -> None:  # type: ignore[override]
         super().setModel(model)
@@ -80,6 +83,30 @@ class FrozenTableView(QTableView):
         self.selectRow(index.row())
         self.scrollTo(index, QAbstractItemView.PositionAtCenter)
 
+    def auto_fit_columns(
+        self,
+        fixed_widths: dict[int, int] | None = None,
+        *,
+        min_width: int = 72,
+        max_auto_width: int = 180,
+        padding: int = 18,
+    ) -> None:
+        model = self.model()
+        if model is None:
+            return
+        self.horizontalHeader().setSectionResizeMode(QHeaderView.Interactive)
+        self._frozen_view.horizontalHeader().setSectionResizeMode(QHeaderView.Interactive)
+        self.resizeColumnsToContents()
+        widths = fixed_widths or {}
+        for column in range(model.columnCount()):
+            if column in widths:
+                width = widths[column]
+            else:
+                measured = self.columnWidth(column) + padding
+                width = max(min_width, min(measured, max_auto_width))
+            self.setColumnWidth(column, width)
+        self._update_frozen_geometry()
+
     def _update_row_height(self, logical_index: int, _old_size: int, new_size: int) -> None:
         self._frozen_view.setRowHeight(logical_index, new_size)
 
@@ -100,9 +127,7 @@ class FrozenTableView(QTableView):
             )
         )
 
-    def _handle_click(self, index) -> None:
-        if index.column() != 0:
-            return
+    def _handle_double_click(self, index) -> None:
         row = index.data(Qt.UserRole)
         self.action_requested.emit(row)
 
