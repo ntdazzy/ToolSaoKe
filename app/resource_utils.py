@@ -18,4 +18,8 @@ def resource_path(*parts: str) -> Path:
 
 
 def logo_image_path() -> Path:
-    return resource_path("logo", "logo.jpg")
+    for file_name in ("logo.png", "logo.jpg", "logo.ico"):
+        candidate = resource_path("logo", file_name)
+        if candidate.exists():
+            return candidate
+    return resource_path("logo", "logo.png")

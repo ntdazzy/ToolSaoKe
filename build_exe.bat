@@ -4,7 +4,7 @@ chcp 65001 > nul
 set PYTHONUTF8=1
 
 set PYTHON_EXE=C:\Program Files\PyManager\python.exe
-set LOGO_JPG=logo\logo.jpg
+set LOGO_IMG=logo\logo.png
 set LOGO_ICO=logo\logo.ico
 
 if not exist "%PYTHON_EXE%" (
@@ -12,8 +12,8 @@ if not exist "%PYTHON_EXE%" (
     exit /b 1
 )
 
-if not exist "%LOGO_JPG%" (
-    echo Khong tim thay file logo tai %LOGO_JPG%
+if not exist "%LOGO_IMG%" (
+    echo Khong tim thay file logo tai %LOGO_IMG%
     exit /b 1
 )
 
@@ -24,8 +24,8 @@ if exist "build\BSRv1.0" rmdir /s /q "build\BSRv1.0"
 if exist "build\ToolDoiSoatSaoKe" rmdir /s /q "build\ToolDoiSoatSaoKe"
 
 "%PYTHON_EXE%" -m pip install -r requirements.txt
-echo Dang tao file icon tu %LOGO_JPG%
-"%PYTHON_EXE%" -c "from pathlib import Path; from PySide6.QtGui import QImage; src = Path(r'%CD%') / r'%LOGO_JPG%'; dst = Path(r'%CD%') / r'%LOGO_ICO%'; image = QImage(str(src)); raise SystemExit(0 if (not image.isNull() and image.save(str(dst))) else 1)"
+echo Dang tao file icon tu %LOGO_IMG%
+"%PYTHON_EXE%" -c "from pathlib import Path; from PySide6.QtGui import QImage; src = Path(r'%CD%') / r'%LOGO_IMG%'; dst = Path(r'%CD%') / r'%LOGO_ICO%'; image = QImage(str(src)); raise SystemExit(0 if (not image.isNull() and image.save(str(dst))) else 1)"
 if errorlevel 1 (
     echo Khong the tao file icon %LOGO_ICO%
     exit /b 1

@@ -25,6 +25,7 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QPushButton,
     QScrollArea,
+    QSizePolicy,
     QStackedWidget,
     QTableWidget,
     QTableWidgetItem,
@@ -424,6 +425,7 @@ class MainWindow(QMainWindow):
         self.scroll_area.setWidgetResizable(True)
         self.scroll_area.setFrameShape(QFrame.NoFrame)
         self.scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.scroll_area.setAlignment(Qt.AlignTop | Qt.AlignLeft)
         central_layout.addWidget(self.scroll_area)
 
         self.scroll_content = QWidget()
@@ -433,6 +435,7 @@ class MainWindow(QMainWindow):
         self.root_layout = root
         root.setContentsMargins(18, 18, 18, 18)
         root.setSpacing(14)
+        root.setAlignment(Qt.AlignTop)
 
         self.title_label = QLabel()
         self.title_label.setObjectName("titleLabel")
@@ -443,12 +446,18 @@ class MainWindow(QMainWindow):
         root.addWidget(self.title_label)
         root.addWidget(self.subtitle_label)
 
+        self.top_section = QWidget()
+        self.top_section.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Maximum)
         self.top_layout = QBoxLayout(QBoxLayout.LeftToRight)
+        self.top_layout.setContentsMargins(0, 0, 0, 0)
         self.top_layout.setSpacing(16)
-        root.addLayout(self.top_layout)
+        self.top_layout.setAlignment(Qt.AlignTop)
+        self.top_section.setLayout(self.top_layout)
+        root.addWidget(self.top_section)
 
         self.file_card = QFrame()
         self.file_card.setObjectName("card")
+        self.file_card.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Maximum)
         file_layout = QGridLayout(self.file_card)
         file_layout.setContentsMargins(14, 14, 14, 14)
         file_layout.setHorizontalSpacing(8)
@@ -524,6 +533,7 @@ class MainWindow(QMainWindow):
 
         self.metadata_card = QFrame()
         self.metadata_card.setObjectName("card")
+        self.metadata_card.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Maximum)
         metadata_layout = QVBoxLayout(self.metadata_card)
         metadata_layout.setContentsMargins(14, 12, 14, 12)
         metadata_layout.setSpacing(8)
@@ -537,8 +547,8 @@ class MainWindow(QMainWindow):
             self.metadata_grid.setColumnStretch(column, 1)
         metadata_layout.addLayout(self.metadata_grid)
 
-        self.top_layout.addWidget(self.file_card, 3)
-        self.top_layout.addWidget(self.metadata_card, 7)
+        self.top_layout.addWidget(self.file_card, 3, Qt.AlignTop)
+        self.top_layout.addWidget(self.metadata_card, 7, Qt.AlignTop)
 
         self.metric_titles: dict[str, QLabel] = {}
         self.metric_values: dict[str, QLabel] = {}
@@ -1578,13 +1588,26 @@ class MainWindow(QMainWindow):
 
     def _update_locked_state(self, locked: bool) -> None:
         has_result = self.current_result is not None
+        self.metadata_card.setVisible(has_result)
+        self.results_card.setVisible(has_result)
         self.results_content.setEnabled(not locked)
         self.results_content.setVisible(has_result)
-        self.locked_label.setVisible(locked)
+        self.locked_label.setVisible(False)
+        self.status_filter_group.setVisible(has_result)
+        self.flow_filter_group.setVisible(has_result)
+        self.reference_filter_group.setVisible(has_result)
+        self.date_filter_group.setVisible(has_result)
+        self.quick_search_group.setVisible(has_result)
         self.summary_group.setVisible(has_result)
+        self.summary_actions.setVisible(has_result)
+        self.swap_button.setVisible(has_result)
         self.export_button.setEnabled(not locked and has_result)
+        for card in self.metric_cards.values():
+            card.setVisible(has_result)
         self.metadata_card.setEnabled(has_result)
-        self.metadata_card.setVisible(True)
+        self.results_card.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Preferred)
+        self.results_card.setMaximumHeight(16777215)
+        self.metadata_card.setMaximumHeight(16777215)
         self.swap_button.setEnabled(not locked and has_result)
         self.reference_filter_combo.setEnabled(not locked)
         self.date_from_edit.setEnabled(not locked and has_result)
@@ -1595,6 +1618,9 @@ class MainWindow(QMainWindow):
         for button in self.flow_buttons.values():
             button.setEnabled(not locked)
         self._update_export_controls_state(locked)
+        self.results_card.updateGeometry()
+        self.metadata_card.updateGeometry()
+        self.top_section.updateGeometry()
 
     def _update_export_controls_state(self, locked: bool) -> None:
         has_result = self.current_result is not None
