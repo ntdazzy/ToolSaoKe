@@ -71,6 +71,14 @@ def extract_reference_tokens(value: str) -> set[str]:
     return tokens
 
 
+def extract_reference_prefixes(tokens: set[str]) -> set[str]:
+    prefixes: set[str] = set()
+    for token in tokens:
+        if token.startswith(("FT", "ST", "SK", "LD", "HB", "TT")):
+            prefixes.add(token[:2])
+    return prefixes
+
+
 def parse_date(value: object) -> date | None:
     if value is None or value == "":
         return None

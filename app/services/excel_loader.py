@@ -11,6 +11,7 @@ from app.services.utils import (
     amount_to_display,
     compact_spaces,
     contains_tax_keywords,
+    extract_reference_prefixes,
     extract_reference_tokens,
     normalize_text,
     parse_date,
@@ -63,6 +64,7 @@ def load_system_transactions(path: str) -> tuple[list[str], list[SystemTransacti
         text_source = " ".join(
             value for value in (voucher_number, summary, counterpart_account, data_source) if value
         )
+        reference_tokens = extract_reference_tokens(text_source)
         rows.append(
             SystemTransaction(
                 row_id=f"sys-{row_idx + 1}",
@@ -80,7 +82,8 @@ def load_system_transactions(path: str) -> tuple[list[str], list[SystemTransacti
                 data_source=data_source,
                 normalized_text=normalize_text(text_source),
                 text_tokens=tokenize(text_source),
-                reference_tokens=extract_reference_tokens(text_source),
+                reference_tokens=reference_tokens,
+                reference_prefixes=extract_reference_prefixes(reference_tokens),
                 has_tax=contains_tax_keywords(summary, counterpart_account, data_source),
             )
         )
@@ -142,6 +145,7 @@ def load_bank_transactions(path: str) -> tuple[list[str], list[BankTransaction],
             )
             if value
         )
+        reference_tokens = extract_reference_tokens(text_source)
         transactions.append(
             BankTransaction(
                 row_id=f"bank-{row_number}",
@@ -163,7 +167,8 @@ def load_bank_transactions(path: str) -> tuple[list[str], list[BankTransaction],
                 running_balance=running_balance,
                 normalized_text=normalize_text(text_source),
                 text_tokens=tokenize(text_source),
-                reference_tokens=extract_reference_tokens(text_source),
+                reference_tokens=reference_tokens,
+                reference_prefixes=extract_reference_prefixes(reference_tokens),
                 has_tax=vat != 0 or contains_tax_keywords(description, reference_number),
             )
         )

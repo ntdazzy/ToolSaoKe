@@ -45,6 +45,7 @@ class SystemTransaction:
     normalized_text: str
     text_tokens: set[str] = field(default_factory=set)
     reference_tokens: set[str] = field(default_factory=set)
+    reference_prefixes: set[str] = field(default_factory=set)
     has_tax: bool = False
     status: str = "unmatched"
     confidence: int = 0
@@ -75,6 +76,7 @@ class BankTransaction:
     normalized_text: str
     text_tokens: set[str] = field(default_factory=set)
     reference_tokens: set[str] = field(default_factory=set)
+    reference_prefixes: set[str] = field(default_factory=set)
     has_tax: bool = False
     status: str = "unmatched"
     confidence: int = 0

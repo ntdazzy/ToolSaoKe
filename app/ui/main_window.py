@@ -177,6 +177,7 @@ class MainWindow(QMainWindow):
         self.system_file_label = QLabel()
         self.bank_file_label = QLabel()
         self.language_label = QLabel()
+        self.reference_filter_label = QLabel()
 
         self.system_path_edit = QLineEdit()
         self.system_path_edit.setReadOnly(True)
@@ -315,6 +316,13 @@ class MainWindow(QMainWindow):
             self.flow_buttons[mode] = button
             toolbar_layout.addWidget(button)
         self.flow_buttons["all"].setChecked(True)
+
+        self.reference_filter_combo = QComboBox()
+        self.reference_filter_combo.setMinimumWidth(230)
+        self.reference_filter_combo.currentIndexChanged.connect(self._apply_filters)
+        toolbar_layout.addSpacing(12)
+        toolbar_layout.addWidget(self.reference_filter_label)
+        toolbar_layout.addWidget(self.reference_filter_combo)
 
         toolbar_layout.addStretch(1)
         self.summary_label = QLabel()
@@ -520,6 +528,7 @@ class MainWindow(QMainWindow):
         self.system_file_label.setText(tr(self.current_language, "system_file"))
         self.bank_file_label.setText(tr(self.current_language, "bank_file"))
         self.language_label.setText(tr(self.current_language, "language"))
+        self.reference_filter_label.setText(tr(self.current_language, "reference_filter"))
         self.system_choose_button.setText(tr(self.current_language, "choose_file"))
         self.bank_choose_button.setText(tr(self.current_language, "choose_file"))
         self.scan_button.setText(tr(self.current_language, "scan"))
@@ -544,6 +553,7 @@ class MainWindow(QMainWindow):
         for key, label in self.metric_titles.items():
             label.setText(tr(self.current_language, key))
         self._refresh_history_headers()
+        self._populate_reference_filter_options()
         if self.system_model:
             self.system_model.set_language(self.current_language)
         if self.bank_model:
@@ -587,6 +597,12 @@ class MainWindow(QMainWindow):
         self.export_button.setEnabled(not locked and self.current_result is not None)
         self.attach_statement_checkbox.setEnabled(not locked and self.current_result is not None)
         self.metadata_card.setEnabled(not locked)
+        self.swap_button.setEnabled(not locked)
+        self.reference_filter_combo.setEnabled(not locked)
+        for button in self.status_buttons.values():
+            button.setEnabled(not locked)
+        for button in self.flow_buttons.values():
+            button.setEnabled(not locked)
 
     def _start_scan(self) -> None:
         system_path = self.system_path_edit.text().strip()
@@ -686,9 +702,11 @@ class MainWindow(QMainWindow):
             return
         status_mode = next(mode for mode, button in self.status_buttons.items() if button.isChecked())
         flow_mode = next(mode for mode, button in self.flow_buttons.items() if button.isChecked())
+        reference_mode = self.reference_filter_combo.currentData() or "all"
         for proxy in (self.system_proxy, self.bank_proxy):
             proxy.set_status_mode(status_mode)
             proxy.set_flow_mode(flow_mode)
+            proxy.set_reference_mode(str(reference_mode))
         self._filter_system_grid()
         self._filter_bank_grid()
         self._update_summary()
@@ -932,3 +950,23 @@ class MainWindow(QMainWindow):
             "zh": "当前筛选条件下没有可导出的数据。",
         }
         return messages.get(self.current_language, messages["vi"])
+
+    def _populate_reference_filter_options(self) -> None:
+        current_value = self.reference_filter_combo.currentData()
+        options = [
+            ("all", "reference_all"),
+            ("FT", "reference_ft"),
+            ("ST", "reference_st"),
+            ("SK", "reference_sk"),
+            ("LD", "reference_ld"),
+            ("HB", "reference_hb"),
+        ]
+        self.reference_filter_combo.blockSignals(True)
+        self.reference_filter_combo.clear()
+        for value, key in options:
+            self.reference_filter_combo.addItem(tr(self.current_language, key), value)
+        if current_value is None:
+            current_value = "all"
+        index = self.reference_filter_combo.findData(current_value)
+        self.reference_filter_combo.setCurrentIndex(index if index >= 0 else 0)
+        self.reference_filter_combo.blockSignals(False)

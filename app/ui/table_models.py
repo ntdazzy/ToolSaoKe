@@ -57,6 +57,13 @@ class TransactionsTableModel(QAbstractTableModel):
             if index.column() - 1 in self._numeric_columns:
                 return int(Qt.AlignRight | Qt.AlignVCenter)
             return int(Qt.AlignLeft | Qt.AlignVCenter)
+        if role == Qt.ForegroundRole:
+            if index.column() == 0:
+                return None
+            if index.column() - 1 in self._numeric_columns:
+                value = row.display_values[index.column() - 1]
+                if parse_vnd_int(value) < 0:
+                    return QColor("#dc2626")
         if role == Qt.BackgroundRole:
             return STATUS_COLORS.get(row.status)
         if role == Qt.ToolTipRole:
@@ -106,6 +113,7 @@ class TransactionsFilterProxyModel(QSortFilterProxyModel):
         super().__init__()
         self._status_mode = "all"
         self._flow_mode = "all"
+        self._reference_mode = "all"
         self._search_text = ""
         self._search_column = -1
         self.setDynamicSortFilter(True)
@@ -116,6 +124,10 @@ class TransactionsFilterProxyModel(QSortFilterProxyModel):
 
     def set_flow_mode(self, mode: str) -> None:
         self._flow_mode = mode
+        self.invalidateFilter()
+
+    def set_reference_mode(self, mode: str) -> None:
+        self._reference_mode = mode.upper() if mode and mode != "all" else "all"
         self.invalidateFilter()
 
     def set_search_text(self, value: str) -> None:
@@ -139,6 +151,9 @@ class TransactionsFilterProxyModel(QSortFilterProxyModel):
             return False
         if self._flow_mode == "tax" and not row.has_tax:
             return False
+        if self._reference_mode != "all":
+            if self._reference_mode not in row.reference_prefixes:
+                return False
         if self._search_text:
             values = row.display_values
             if self._search_column >= 0 and self._search_column < len(values):

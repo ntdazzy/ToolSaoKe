@@ -1,0 +1,33 @@
+# Python cache
+__pycache__/
+*.py[cod]
+
+# Virtual env
+.venv/
+venv/
+env/
+
+# VS Code
+.vscode/
+
+# Build
+dist/
+build/
+*.spec
+
+# Local database
+*.sqlite
+*.db
+
+# Excel output / test data
+data/*.xlsx
+data/*.xls
+
+# Input files
+File/*.xlsx
+File/*.xls
+File/*.csv
+
+# OS files
+.DS_Store
+Thumbs.db

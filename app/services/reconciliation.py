@@ -110,6 +110,9 @@ class ReconciliationService:
                 system_row.matched_bank_row = bank_row.excel_row
                 bank_row.matched_system_row = system_row.excel_row
                 system_row.has_tax = system_row.has_tax or bank_row.has_tax
+                shared_prefixes = system_row.reference_prefixes | bank_row.reference_prefixes
+                system_row.reference_prefixes = shared_prefixes
+                bank_row.reference_prefixes = shared_prefixes
 
     def _score_pair(
         self,
