@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from itertools import islice
 import logging
 import re
 from pathlib import Path
@@ -24,6 +25,19 @@ from app.services.utils import (
 
 
 SYSTEM_HEADERS_LIMIT = 10
+BANK_HEADERS_LIMIT = 12
+SYSTEM_REQUIRED_HEADERS = {
+    "凭证日期",
+    "凭证字号",
+    "摘要",
+    "对方科目",
+    "金额贷方",
+    "金额借方",
+}
+BANK_REQUIRED_HEADERS = {
+    "Ngày giao dịch/Transaction date",
+    "Số bút toán/Reference number",
+}
 BANK_FOOTER_MARKERS = (
     "this paper is printed by techcombank electronic banking",
     "phiếu này được in từ hệ thống ngân hàng điện tử của techcombank",
@@ -31,6 +45,58 @@ BANK_FOOTER_MARKERS = (
     "printed on",
 )
 logger = logging.getLogger(__name__)
+
+
+def detect_excel_file_kind(path: str) -> tuple[str, str | None]:
+    file_path = Path(path)
+    suffix = file_path.suffix.lower()
+    try:
+        if suffix == ".xls":
+            return _detect_xls_file_kind(path), None
+        if suffix == ".xlsx":
+            return _detect_xlsx_file_kind(path), None
+        return "unknown", f"unsupported extension: {suffix or '(empty)'}"
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Không thể nhận diện loại file %s: %s", path, exc)
+        return "unknown", str(exc)
+
+
+def _detect_xls_file_kind(path: str) -> str:
+    workbook = xlrd.open_workbook(path, on_demand=True)
+    try:
+        sheet = workbook.sheet_by_index(0)
+        row_count = min(sheet.nrows, 8)
+        col_count = min(sheet.ncols, SYSTEM_HEADERS_LIMIT)
+        for row_idx in range(row_count):
+            cells = {
+                compact_spaces(to_text(sheet.cell_value(row_idx, col_idx)))
+                for col_idx in range(col_count)
+                if compact_spaces(to_text(sheet.cell_value(row_idx, col_idx)))
+            }
+            if SYSTEM_REQUIRED_HEADERS.issubset(cells):
+                return "system"
+        return "unknown"
+    finally:
+        workbook.release_resources()
+
+
+def _detect_xlsx_file_kind(path: str) -> str:
+    workbook = load_workbook(filename=path, data_only=True, read_only=True)
+    try:
+        sheet = workbook.worksheets[0]
+        for row in islice(sheet.iter_rows(values_only=True), 40):
+            cells = {
+                compact_spaces(to_text(value))
+                for value in row[:BANK_HEADERS_LIMIT]
+                if compact_spaces(to_text(value))
+            }
+            if BANK_REQUIRED_HEADERS.issubset(cells):
+                return "bank"
+            if SYSTEM_REQUIRED_HEADERS.issubset(cells):
+                return "system"
+        return "unknown"
+    finally:
+        workbook.close()
 
 
 def load_system_transactions(path: str) -> tuple[list[str], list[SystemTransaction]]:

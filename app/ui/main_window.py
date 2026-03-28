@@ -38,6 +38,7 @@ from PySide6.QtWidgets import (
 from app.i18n import tr
 from app.models import ReconciliationResult
 from app.resource_utils import logo_image_path
+from app.services.excel_loader import detect_excel_file_kind
 from app.services.exporter import export_system_rows
 from app.services.history_store import HistoryStore
 from app.services.reconciliation import ReconciliationService
@@ -499,7 +500,7 @@ class MainWindow(QMainWindow):
         self.export_button = QPushButton()
         self.attach_statement_checkbox = QCheckBox()
         self.history_button.clicked.connect(self._open_history_dialog)
-        self.scan_button.clicked.connect(self._start_scan)
+        self.scan_button.clicked.connect(self._handle_scan_requested)
         self.export_button.clicked.connect(self._export_unmatched)
         self.history_button.setFixedWidth(106)
         self.history_button.setMinimumHeight(36)
@@ -1626,6 +1627,130 @@ class MainWindow(QMainWindow):
         has_result = self.current_result is not None
         allow_attach_statement = not locked and has_result
         self.attach_statement_checkbox.setEnabled(allow_attach_statement)
+
+    def _validate_selected_files(self, system_path: str, bank_path: str) -> str | None:
+        system_kind, system_reason = detect_excel_file_kind(system_path)
+        bank_kind, bank_reason = detect_excel_file_kind(bank_path)
+        logger.info(
+            "Kiem tra file truoc khi do. system_kind=%s | bank_kind=%s | system_reason=%s | bank_reason=%s",
+            system_kind,
+            bank_kind,
+            system_reason,
+            bank_reason,
+        )
+        system_name = Path(system_path).name
+        bank_name = Path(bank_path).name
+
+        if system_kind == "bank" and bank_kind == "system":
+            return self._file_validation_text("swapped", system_name=system_name, bank_name=bank_name)
+        if system_kind == "bank":
+            return self._file_validation_text("system_is_bank", name=system_name)
+        if system_kind != "system":
+            return self._file_validation_text("invalid_system", name=system_name)
+        if bank_kind == "system":
+            return self._file_validation_text("bank_is_system", name=bank_name)
+        if bank_kind != "bank":
+            return self._file_validation_text("invalid_bank", name=bank_name)
+        return None
+
+    def _file_validation_text(self, key: str, **kwargs: str) -> str:
+        messages = {
+            "vi": {
+                "swapped": (
+                    "Bạn đang chọn ngược 2 file.\n"
+                    "- Ô File hệ thống đang là file sao kê ngân hàng: {system_name}\n"
+                    "- Ô File sao kê đang là file hệ thống: {bank_name}\n"
+                    "Vui lòng đổi lại đúng vị trí rồi dò lại."
+                ),
+                "system_is_bank": (
+                    "Ô File hệ thống đang chọn file sao kê ngân hàng: {name}\n"
+                    "Vui lòng chuyển file này sang ô Sao kê, hoặc chọn lại đúng file hệ thống."
+                ),
+                "invalid_system": (
+                    "File hệ thống không đúng mẫu: {name}\n"
+                    "Vui lòng chọn đúng file giao dịch hệ thống (.xls)."
+                ),
+                "bank_is_system": (
+                    "Ô File sao kê đang chọn file hệ thống: {name}\n"
+                    "Vui lòng chuyển file này sang ô Hệ thống, hoặc chọn lại đúng file sao kê."
+                ),
+                "invalid_bank": (
+                    "File sao kê không đúng mẫu: {name}\n"
+                    "Vui lòng chọn đúng file sao kê ngân hàng (.xlsx)."
+                ),
+            },
+            "en": {
+                "swapped": (
+                    "The two files are selected in the wrong slots.\n"
+                    "- The System file is actually a bank statement: {system_name}\n"
+                    "- The Statement file is actually a system file: {bank_name}\n"
+                    "Please switch them and try again."
+                ),
+                "system_is_bank": (
+                    "The System slot currently contains a bank statement file: {name}\n"
+                    "Please move this file to the Statement slot, or choose the correct system file."
+                ),
+                "invalid_system": (
+                    "The selected System file does not match the expected template: {name}\n"
+                    "Please choose the correct system transaction file (.xls)."
+                ),
+                "bank_is_system": (
+                    "The Statement slot currently contains a system file: {name}\n"
+                    "Please move this file to the System slot, or choose the correct statement file."
+                ),
+                "invalid_bank": (
+                    "The selected Statement file does not match the expected template: {name}\n"
+                    "Please choose the correct bank statement file (.xlsx)."
+                ),
+            },
+            "zh": {
+                "swapped": (
+                    "两个文件放反了。\n"
+                    "- 系统文件栏位现在是银行流水: {system_name}\n"
+                    "- 流水文件栏位现在是系统文件: {bank_name}\n"
+                    "请调换后再重试。"
+                ),
+                "system_is_bank": (
+                    "系统文件栏位现在选的是银行流水: {name}\n"
+                    "请将该文件放到流水栏位，或重新选择正确的系统文件。"
+                ),
+                "invalid_system": (
+                    "所选的系统文件不符合预期模板: {name}\n"
+                    "请选择正确的系统交易文件 (.xls)。"
+                ),
+                "bank_is_system": (
+                    "流水文件栏位现在选的是系统文件: {name}\n"
+                    "请将该文件放到系统栏位，或重新选择正确的流水文件。"
+                ),
+                "invalid_bank": (
+                    "所选的流水文件不符合预期模板: {name}\n"
+                    "请选择正确的银行流水文件 (.xlsx)。"
+                ),
+            },
+        }
+        language_messages = messages.get(self.current_language, messages["vi"])
+        template = language_messages.get(key, messages["vi"][key])
+        return template.format(**kwargs)
+
+    def _handle_scan_requested(self) -> None:
+        system_path = self._selected_system_path.strip()
+        bank_path = self._selected_bank_path.strip()
+        if system_path and bank_path:
+            validation_message = self._validate_selected_files(system_path, bank_path)
+            if validation_message:
+                logger.warning(
+                    "Chan thao tac do vi chon sai file. system_file=%s | bank_file=%s | message=%s",
+                    system_path,
+                    bank_path,
+                    validation_message.replace("\n", " | "),
+                )
+                QMessageBox.warning(
+                    self,
+                    tr(self.current_language, "app_title"),
+                    validation_message,
+                )
+                return
+        self._start_scan()
 
     def _start_scan(self) -> None:
         system_path = self._selected_system_path.strip()
