@@ -13,7 +13,7 @@ class HistoryStore:
     def __init__(self, database_path: str) -> None:
         self.database_path = Path(database_path)
         self.database_path.parent.mkdir(parents=True, exist_ok=True)
-        logger.info("Khởi tạo lịch sử đối soát tại %s", self.database_path)
+        logger.info("Khởi tạo lịch sử dò tại %s", self.database_path)
         self._ensure_schema()
 
     def _ensure_schema(self) -> None:
@@ -74,7 +74,7 @@ class HistoryStore:
             )
             connection.commit()
         logger.info(
-            "Đã lưu lịch sử đối soát. system=%s | bank=%s | matched=%s | review=%s | unmatched=%s",
+            "Đã lưu lịch sử dò. system=%s | bank=%s | matched=%s | review=%s | unmatched=%s",
             result.system_file,
             result.bank_file,
             summary.matched_system,
@@ -94,5 +94,5 @@ class HistoryStore:
                 """,
                 (limit,),
             ).fetchall()
-        logger.debug("Tải lịch sử đối soát gần đây. limit=%s | returned=%s", limit, len(rows))
+        logger.debug("Tải lịch sử dò gần đây. limit=%s | returned=%s", limit, len(rows))
         return [dict(row) for row in rows]

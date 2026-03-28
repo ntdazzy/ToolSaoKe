@@ -17,6 +17,12 @@ if not exist "%LOGO_JPG%" (
     exit /b 1
 )
 
+if exist "dist\BSRv1.0.exe" del /f /q "dist\BSRv1.0.exe"
+if exist "dist\BSRv1.0" rmdir /s /q "dist\BSRv1.0"
+if exist "dist\ToolDoiSoatSaoKe" rmdir /s /q "dist\ToolDoiSoatSaoKe"
+if exist "build\BSRv1.0" rmdir /s /q "build\BSRv1.0"
+if exist "build\ToolDoiSoatSaoKe" rmdir /s /q "build\ToolDoiSoatSaoKe"
+
 "%PYTHON_EXE%" -m pip install -r requirements.txt
 echo Dang tao file icon tu %LOGO_JPG%
 "%PYTHON_EXE%" -c "from pathlib import Path; from PySide6.QtGui import QImage; src = Path(r'%CD%') / r'%LOGO_JPG%'; dst = Path(r'%CD%') / r'%LOGO_ICO%'; image = QImage(str(src)); raise SystemExit(0 if (not image.isNull() and image.save(str(dst))) else 1)"
@@ -25,8 +31,8 @@ if errorlevel 1 (
     exit /b 1
 )
 
-"%PYTHON_EXE%" -m PyInstaller --noconfirm --windowed --name BSRv1.0 --clean --icon "%LOGO_ICO%" --add-data "logo;logo" main.py
+"%PYTHON_EXE%" -m PyInstaller --noconfirm --onefile --windowed --name BSRv1.0 --clean --icon "%LOGO_ICO%" --add-data "logo;logo" main.py
 
 echo.
-echo File exe nam trong thu muc dist\BSRv1.0
+echo File exe nam trong thu muc dist\BSRv1.0.exe
 endlocal

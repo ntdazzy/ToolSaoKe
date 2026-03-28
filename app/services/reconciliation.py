@@ -41,14 +41,14 @@ class PairScore:
 class ReconciliationService:
     def run(self, system_path: str, bank_path: str) -> ReconciliationResult:
         logger.info(
-            "Bắt đầu đối soát. system_file=%s | bank_file=%s",
+            "Bắt đầu dò. system_file=%s | bank_file=%s",
             system_path,
             bank_path,
         )
         system_headers, system_rows = load_system_transactions(system_path)
         bank_headers, bank_rows, metadata = load_bank_transactions(bank_path)
         logger.info(
-            "Đã nạp dữ liệu đối soát. system_rows=%s | bank_rows=%s",
+            "Đã nạp dữ liệu dò. system_rows=%s | bank_rows=%s",
             len(system_rows),
             len(bank_rows),
         )
@@ -56,7 +56,7 @@ class ReconciliationService:
         self._run_matching_cycles(system_rows, bank_rows)
         summary = self._build_summary(system_rows, bank_rows)
         logger.info(
-            "Đối soát xong. matched_system=%s | review_system=%s | unmatched_system=%s | "
+            "Dò xong. matched_system=%s | review_system=%s | unmatched_system=%s | "
             "matched_bank=%s | review_bank=%s | unmatched_bank=%s",
             summary.matched_system,
             summary.review_system,

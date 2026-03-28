@@ -6,7 +6,7 @@ from html import escape
 import logging
 from pathlib import Path
 
-from PySide6.QtCore import QDate, QObject, QThread, Qt, Signal, Slot
+from PySide6.QtCore import QDate, QObject, QThread, Qt, Signal, Slot, QTimer
 from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import (
     QBoxLayout,
@@ -42,7 +42,7 @@ from app.services.history_store import HistoryStore
 from app.services.reconciliation import ReconciliationService
 from app.services.utils import format_vnd
 from app.ui.table_models import TransactionsFilterProxyModel, TransactionsTableModel
-from app.ui.widgets import FrozenTableView, LoadingOverlay, PopupDateEdit
+from app.ui.widgets import FrozenTableView, InstantToolTipButton, LoadingOverlay, PopupDateEdit, StyledComboBox
 
 logger = logging.getLogger(__name__)
 
@@ -70,16 +70,16 @@ class ScanWorker(QObject):
     def run(self) -> None:
         try:
             logger.info(
-                "Worker bắt đầu đối soát. system_file=%s | bank_file=%s",
+                "Worker bắt đầu dò. system_file=%s | bank_file=%s",
                 self.system_path,
                 self.bank_path,
             )
             result = ReconciliationService().run(self.system_path, self.bank_path)
         except Exception as exc:  # noqa: BLE001
-            logger.exception("Worker đối soát lỗi: %s", exc)
+            logger.exception("Worker dò lỗi: %s", exc)
             self.failed.emit(str(exc))
             return
-        logger.info("Worker đối soát hoàn tất.")
+        logger.info("Worker dò hoàn tất.")
         self.finished.emit(result)
 
 
@@ -238,8 +238,8 @@ class PairDialog(QDialog):
                 "debug_date_transaction": "Ngày giao dịch",
                 "debug_date_reference": "Ngày suy ra từ mã nội bộ",
                 "debug_none": "Không có",
-                "explain_show": "Xem giải thích đối soát",
-                "explain_hide": "Ẩn giải thích đối soát",
+                "explain_show": "Xem giải thích cách dò",
+                "explain_hide": "Ẩn giải thích cách dò",
             },
             "en": {
                 "status_label": "Status",
@@ -334,7 +334,7 @@ class HistoryDialog(QDialog):
         self.table.setRowCount(len(records))
         for row_index, record in enumerate(records):
             scanned_at = str(record.get("scanned_at", "")).replace("T", " ")
-            summary = f"{record.get('matched_system', 0)} | {record.get('review_system', 0)} | {record.get('unmatched_system', 0)}"
+            summary = self._history_summary_text(record)
             values = [
                 scanned_at,
                 Path(str(record.get("system_file", ""))).name,
@@ -342,9 +342,44 @@ class HistoryDialog(QDialog):
                 summary,
             ]
             for column_index, value in enumerate(values):
-                self.table.setItem(row_index, column_index, QTableWidgetItem(str(value)))
+                item = QTableWidgetItem(str(value))
+                item.setTextAlignment(int(Qt.AlignLeft | Qt.AlignVCenter))
+                self.table.setItem(row_index, column_index, item)
+        self.table.setWordWrap(True)
         self.table.resizeColumnsToContents()
+        self.table.resizeRowsToContents()
+        self.table.setColumnWidth(0, 150)
+        self.table.setColumnWidth(1, 170)
+        self.table.setColumnWidth(2, 260)
         self.table.horizontalHeader().setStretchLastSection(True)
+
+    def _history_summary_text(self, record: dict[str, object]) -> str:
+        if self.language == "en":
+            system_label = "System"
+            bank_label = "Statement"
+            matched_label = "matched"
+            review_label = "review"
+            unmatched_label = "unmatched"
+        elif self.language == "zh":
+            system_label = "系统"
+            bank_label = "流水"
+            matched_label = "已匹配"
+            review_label = "待复核"
+            unmatched_label = "未匹配"
+        else:
+            system_label = "Hệ thống"
+            bank_label = "Sao kê"
+            matched_label = "khớp"
+            review_label = "cần kiểm tra"
+            unmatched_label = "không khớp"
+        return (
+            f"{system_label}: {record.get('matched_system', 0)} {matched_label}, "
+            f"{record.get('review_system', 0)} {review_label}, "
+            f"{record.get('unmatched_system', 0)} {unmatched_label}\n"
+            f"{bank_label}: {record.get('matched_bank', 0)} {matched_label}, "
+            f"{record.get('review_bank', 0)} {review_label}, "
+            f"{record.get('unmatched_bank', 0)} {unmatched_label}"
+        )
 
 
 class MainWindow(QMainWindow):
@@ -376,7 +411,7 @@ class MainWindow(QMainWindow):
         logger.info("Đã khởi tạo MainWindow.")
 
     def _build_ui(self) -> None:
-        self.setWindowTitle("Tool đối soát sao kê ngân hàng")
+        self.setWindowTitle("BSR v1.0")
         self.resize(1520, 980)
 
         central = QWidget(self)
@@ -415,9 +450,9 @@ class MainWindow(QMainWindow):
         self.file_card = QFrame()
         self.file_card.setObjectName("card")
         file_layout = QGridLayout(self.file_card)
-        file_layout.setContentsMargins(16, 16, 16, 16)
-        file_layout.setHorizontalSpacing(10)
-        file_layout.setVerticalSpacing(10)
+        file_layout.setContentsMargins(14, 14, 14, 14)
+        file_layout.setHorizontalSpacing(8)
+        file_layout.setVerticalSpacing(8)
         file_layout.setColumnStretch(1, 1)
 
         self.system_file_label = QLabel()
@@ -441,12 +476,13 @@ class MainWindow(QMainWindow):
         self.system_choose_button.clicked.connect(lambda: self._choose_file("system"))
         self.bank_choose_button.clicked.connect(lambda: self._choose_file("bank"))
 
-        self.language_combo = QComboBox()
+        self.language_combo = StyledComboBox()
+        self.language_combo.setObjectName("compactCombo")
         self.language_combo.addItem("Tiếng Việt", "vi")
         self.language_combo.addItem("English", "en")
         self.language_combo.addItem("中文简体", "zh")
         self.language_combo.setMaximumWidth(158)
-        self.language_combo.setMinimumHeight(36)
+        self.language_combo.setFixedHeight(28)
         self.language_combo.currentIndexChanged.connect(self._on_language_changed)
 
         self.history_button = QPushButton()
@@ -458,8 +494,8 @@ class MainWindow(QMainWindow):
         self.export_button.clicked.connect(self._export_unmatched)
         self.history_button.setFixedWidth(106)
         self.history_button.setMinimumHeight(36)
-        self.scan_button.setFixedWidth(106)
-        self.scan_button.setMinimumHeight(36)
+        self.scan_button.setFixedWidth(126)
+        self.scan_button.setMinimumHeight(38)
         self.export_button.setFixedWidth(106)
         self.export_button.setMinimumHeight(36)
         self.export_button.setEnabled(False)
@@ -615,9 +651,18 @@ class MainWindow(QMainWindow):
         self.results_title.setObjectName("sectionTitle")
         results_layout.addWidget(self.results_title)
 
-        toolbar_layout = QHBoxLayout()
-        toolbar_layout.setSpacing(8)
-        results_layout.addLayout(toolbar_layout)
+        self.toolbar_groups_layout = QBoxLayout(QBoxLayout.LeftToRight)
+        self.toolbar_groups_layout.setSpacing(14)
+        results_layout.addLayout(self.toolbar_groups_layout)
+
+        self.status_filter_group = QFrame()
+        self.status_filter_group.setObjectName("filterGroup")
+        status_group_layout = QHBoxLayout(self.status_filter_group)
+        status_group_layout.setContentsMargins(10, 8, 10, 8)
+        status_group_layout.setSpacing(8)
+        self.status_group_label = QLabel()
+        self.status_group_label.setObjectName("filterLabel")
+        status_group_layout.addWidget(self.status_group_label)
 
         self.status_group = QButtonGroup(self)
         self.status_group.setExclusive(True)
@@ -629,10 +674,18 @@ class MainWindow(QMainWindow):
             button.clicked.connect(self._apply_filters)
             self.status_group.addButton(button)
             self.status_buttons[mode] = button
-            toolbar_layout.addWidget(button)
+            status_group_layout.addWidget(button)
         self.status_buttons["all"].setChecked(True)
+        self.toolbar_groups_layout.addWidget(self.status_filter_group)
 
-        toolbar_layout.addSpacing(6)
+        self.flow_filter_group = QFrame()
+        self.flow_filter_group.setObjectName("filterGroup")
+        flow_group_layout = QHBoxLayout(self.flow_filter_group)
+        flow_group_layout.setContentsMargins(10, 8, 10, 8)
+        flow_group_layout.setSpacing(8)
+        self.flow_group_label = QLabel()
+        self.flow_group_label.setObjectName("filterLabel")
+        flow_group_layout.addWidget(self.flow_group_label)
 
         self.flow_group = QButtonGroup(self)
         self.flow_group.setExclusive(True)
@@ -644,10 +697,10 @@ class MainWindow(QMainWindow):
             button.clicked.connect(self._apply_filters)
             self.flow_group.addButton(button)
             self.flow_buttons[mode] = button
-            toolbar_layout.addWidget(button)
+            flow_group_layout.addWidget(button)
         self.flow_buttons["all"].setChecked(True)
-
-        toolbar_layout.addStretch(1)
+        self.toolbar_groups_layout.addWidget(self.flow_filter_group)
+        self.toolbar_groups_layout.addStretch(1)
 
         self.filter_controls_layout = QBoxLayout(QBoxLayout.LeftToRight)
         self.filter_controls_layout.setSpacing(14)
@@ -660,7 +713,7 @@ class MainWindow(QMainWindow):
         self.date_to_label.setObjectName("filterLabel")
         self.date_from_edit = PopupDateEdit()
         self.date_to_edit = PopupDateEdit()
-        self.reference_filter_combo = QComboBox()
+        self.reference_filter_combo = StyledComboBox()
         self.reference_filter_combo.setMinimumWidth(220)
         self.reference_filter_combo.setMinimumHeight(36)
         self.reference_filter_combo.currentIndexChanged.connect(self._apply_filters)
@@ -713,17 +766,50 @@ class MainWindow(QMainWindow):
         self.summary_row_layout = QBoxLayout(QBoxLayout.LeftToRight)
         self.summary_row_layout.setSpacing(8)
         results_layout.addLayout(self.summary_row_layout)
-        self.summary_label = QLabel()
-        self.summary_label.setObjectName("summaryLabel")
-        self.summary_row_layout.addWidget(self.summary_label)
-        self.summary_row_layout.addStretch(1)
-        self.summary_row_layout.addWidget(self.history_button)
-        self.summary_row_layout.addWidget(self.export_button)
-        self.summary_row_layout.addWidget(self.attach_statement_checkbox)
+        self.summary_group = QFrame()
+        self.summary_group.setObjectName("summaryGroup")
+        self.summary_group.setMinimumWidth(460)
+        self.summary_group.setMaximumWidth(460)
+        summary_group_layout = QHBoxLayout(self.summary_group)
+        summary_group_layout.setContentsMargins(12, 8, 12, 8)
+        summary_group_layout.setSpacing(8)
+        self.summary_grid_label = QLabel()
+        self.summary_grid_label.setObjectName("summaryGridLabel")
+        summary_group_layout.addWidget(self.summary_grid_label)
+        self.summary_chip_matched = QLabel()
+        self.summary_chip_matched.setObjectName("summaryChipMatched")
+        self.summary_chip_matched.setAlignment(Qt.AlignCenter)
+        summary_group_layout.addWidget(self.summary_chip_matched)
+        self.summary_chip_review = QLabel()
+        self.summary_chip_review.setObjectName("summaryChipReview")
+        self.summary_chip_review.setAlignment(Qt.AlignCenter)
+        summary_group_layout.addWidget(self.summary_chip_review)
+        self.summary_chip_unmatched = QLabel()
+        self.summary_chip_unmatched.setObjectName("summaryChipUnmatched")
+        self.summary_chip_unmatched.setAlignment(Qt.AlignCenter)
+        summary_group_layout.addWidget(self.summary_chip_unmatched)
+        self.summary_help_button = InstantToolTipButton()
+        self.summary_help_button.setObjectName("summaryHelpButton")
+        self.summary_help_button.setText("!")
+        self.summary_help_button.setCursor(Qt.PointingHandCursor)
+        self.summary_help_button.setAutoRaise(True)
+        summary_group_layout.addWidget(self.summary_help_button)
+        summary_group_layout.addStretch(1)
+        self.summary_row_layout.addWidget(self.summary_group, 1)
+        self.summary_actions = QFrame()
+        self.summary_actions.setObjectName("summaryActions")
+        summary_actions_layout = QHBoxLayout(self.summary_actions)
+        summary_actions_layout.setContentsMargins(10, 6, 10, 6)
+        summary_actions_layout.setSpacing(10)
+        summary_actions_layout.addWidget(self.history_button)
+        summary_actions_layout.addWidget(self.export_button)
+        summary_actions_layout.addWidget(self.attach_statement_checkbox)
         self.swap_button = QPushButton()
         self.swap_button.setFixedWidth(148)
         self.swap_button.setMinimumHeight(36)
         self.swap_button.clicked.connect(self._swap_grids)
+        summary_actions_layout.addStretch(1)
+        self.summary_row_layout.addWidget(self.summary_actions, 1)
         self.summary_row_layout.addWidget(self.swap_button)
 
         self.locked_label = QLabel()
@@ -735,7 +821,7 @@ class MainWindow(QMainWindow):
         content_layout.setContentsMargins(0, 0, 0, 0)
         content_layout.setSpacing(0)
         self.grid_stack = QStackedWidget(self.results_content)
-        self.grid_stack.setMinimumHeight(560)
+        self.grid_stack.setMinimumHeight(360)
         content_layout.addWidget(self.grid_stack)
         results_layout.addWidget(self.results_content)
         root.addWidget(self.results_card)
@@ -752,6 +838,7 @@ class MainWindow(QMainWindow):
         self.bank_grid.search.textChanged.connect(self._filter_bank_grid)
         self.system_grid.columns.currentIndexChanged.connect(self._filter_system_grid)
         self.bank_grid.columns.currentIndexChanged.connect(self._filter_bank_grid)
+        self.system_grid.search.hide()
         self.bank_grid.search.hide()
 
         self.overlay = LoadingOverlay(central)
@@ -776,7 +863,7 @@ class MainWindow(QMainWindow):
         title_row.addWidget(count_label)
 
         filter_row = QHBoxLayout()
-        columns_combo = QComboBox()
+        columns_combo = StyledComboBox()
         columns_combo.setMinimumWidth(188)
         columns_combo.setMinimumHeight(36)
         columns_combo.hide()
@@ -789,7 +876,7 @@ class MainWindow(QMainWindow):
         table.setSortingEnabled(True)
         table.setSelectionBehavior(FrozenTableView.SelectRows)
         table.setSelectionMode(FrozenTableView.SingleSelection)
-        table.setMinimumHeight(520)
+        table.setMinimumHeight(280)
 
         layout.addLayout(title_row)
         layout.addLayout(filter_row)
@@ -830,9 +917,40 @@ class MainWindow(QMainWindow):
         self._metadata_layout_mode = mode
 
     def _grid_area_min_height(self) -> int:
-        screen = self.screen()
-        screen_height = screen.availableGeometry().height() if screen else self.height()
-        return max(760, int(screen_height * 0.86))
+        return 360
+
+    def _grid_panel_extra_height(self, grid: GridWidgets) -> int:
+        title_height = max(grid.title.sizeHint().height(), grid.count.sizeHint().height(), 22)
+        filter_height = grid.search.sizeHint().height() if grid.search.isVisible() else 0
+        return 24 + title_height + filter_height + 24
+
+    def _table_target_height(self, table: FrozenTableView, visible_rows: int) -> int:
+        rows_to_show = max(1, min(visible_rows, 25))
+        header_height = max(table.horizontalHeader().height(), table.horizontalHeader().sizeHint().height(), 28)
+        row_height = table.rowHeight(0) if visible_rows > 0 else table.verticalHeader().defaultSectionSize()
+        row_height = max(row_height, 24)
+        horizontal_scroll_height = table.horizontalScrollBar().sizeHint().height() + 4
+        frame_height = table.frameWidth() * 2
+        return header_height + (rows_to_show * row_height) + horizontal_scroll_height + frame_height + 4
+
+    def _update_grid_heights(self) -> None:
+        grids = (
+            ("system", self.system_grid, self.system_proxy),
+            ("bank", self.bank_grid, self.bank_proxy),
+        )
+        heights: dict[str, int] = {}
+        for mode, grid, proxy in grids:
+            visible_rows = proxy.rowCount() if proxy else 0
+            table_height = self._table_target_height(grid.table, visible_rows)
+            panel_height = table_height + self._grid_panel_extra_height(grid)
+            grid.table.setMinimumHeight(table_height)
+            grid.table.setMaximumHeight(table_height)
+            grid.container.setMinimumHeight(panel_height)
+            grid.container.setMaximumHeight(panel_height)
+            heights[mode] = panel_height
+        active_height = heights.get(self._active_grid_mode, self._grid_area_min_height())
+        self.grid_stack.setMinimumHeight(active_height)
+        self.grid_stack.setMaximumHeight(active_height)
 
     def _apply_responsive_layouts(self) -> None:
         width = self.width()
@@ -855,13 +973,15 @@ class MainWindow(QMainWindow):
             self._apply_metadata_layout("wide")
 
         self.summary_row_layout.setDirection(QBoxLayout.TopToBottom if width < 1120 else QBoxLayout.LeftToRight)
+        if width < 1120:
+            self.summary_group.setMinimumWidth(0)
+            self.summary_group.setMaximumWidth(16777215)
+        else:
+            self.summary_group.setMinimumWidth(460)
+            self.summary_group.setMaximumWidth(460)
+        self.toolbar_groups_layout.setDirection(QBoxLayout.TopToBottom if width < 1320 else QBoxLayout.LeftToRight)
         self.filter_controls_layout.setDirection(QBoxLayout.TopToBottom if width < 1320 else QBoxLayout.LeftToRight)
-
-        grid_min_height = self._grid_area_min_height()
-        self.grid_stack.setMinimumHeight(grid_min_height)
-        table_height = max(720, grid_min_height - 78)
-        self.system_grid.table.setMinimumHeight(table_height)
-        self.bank_grid.table.setMinimumHeight(table_height)
+        self._update_grid_heights()
 
     def resizeEvent(self, event) -> None:
         super().resizeEvent(event)
@@ -883,6 +1003,66 @@ class MainWindow(QMainWindow):
                 border: none;
                 background: #eef3f9;
             }
+            QScrollBar:vertical {
+                background: transparent;
+                width: 14px;
+                margin: 6px 3px 6px 0;
+            }
+            QScrollBar::handle:vertical {
+                background: #c9d6e8;
+                border: 1px solid #b8c7dc;
+                border-radius: 6px;
+                min-height: 36px;
+            }
+            QScrollBar::handle:vertical:hover {
+                background: #b4c7e0;
+                border-color: #9cb3d3;
+            }
+            QScrollBar::handle:vertical:pressed {
+                background: #94add0;
+                border-color: #7f9bc3;
+            }
+            QScrollBar::add-line:vertical,
+            QScrollBar::sub-line:vertical {
+                height: 0px;
+                border: none;
+                background: transparent;
+            }
+            QScrollBar::add-page:vertical,
+            QScrollBar::sub-page:vertical {
+                background: rgba(148, 163, 184, 0.12);
+                border-radius: 6px;
+            }
+            QScrollBar:horizontal {
+                background: transparent;
+                height: 14px;
+                margin: 0 6px 3px 6px;
+            }
+            QScrollBar::handle:horizontal {
+                background: #c9d6e8;
+                border: 1px solid #b8c7dc;
+                border-radius: 6px;
+                min-width: 40px;
+            }
+            QScrollBar::handle:horizontal:hover {
+                background: #b4c7e0;
+                border-color: #9cb3d3;
+            }
+            QScrollBar::handle:horizontal:pressed {
+                background: #94add0;
+                border-color: #7f9bc3;
+            }
+            QScrollBar::add-line:horizontal,
+            QScrollBar::sub-line:horizontal {
+                width: 0px;
+                border: none;
+                background: transparent;
+            }
+            QScrollBar::add-page:horizontal,
+            QScrollBar::sub-page:horizontal {
+                background: rgba(148, 163, 184, 0.12);
+                border-radius: 6px;
+            }
             QWidget#loadingOverlay {
                 background: rgba(107, 114, 128, 132);
             }
@@ -897,6 +1077,11 @@ class MainWindow(QMainWindow):
                 border-radius: 18px;
             }
             QFrame#filterGroup {
+                background: #f8fbff;
+                border: 1px solid #dbe4f0;
+                border-radius: 12px;
+            }
+            QFrame#summaryActions {
                 background: #f8fbff;
                 border: 1px solid #dbe4f0;
                 border-radius: 12px;
@@ -924,12 +1109,55 @@ class MainWindow(QMainWindow):
                 font-weight: 600;
                 color: #1f2937;
             }
+            QFrame#summaryGroup {
+                background: #f8fbff;
+                border: 1px solid #dbe4f0;
+                border-radius: 12px;
+            }
+            QLabel#summaryGridLabel {
+                font-size: 12px;
+                font-weight: 700;
+                color: #0f172a;
+                padding-right: 2px;
+            }
+            QLabel#summaryChipMatched,
+            QLabel#summaryChipReview,
+            QLabel#summaryChipUnmatched {
+                font-size: 11px;
+                font-weight: 700;
+                min-height: 24px;
+                border-radius: 12px;
+                padding: 2px 12px;
+            }
+            QLabel#summaryChipMatched {
+                background: #dcfce7;
+                border: 1px solid #bbf7d0;
+                color: #166534;
+            }
+            QLabel#summaryChipReview {
+                background: #fef3c7;
+                border: 1px solid #fde68a;
+                color: #92400e;
+            }
+            QLabel#summaryChipUnmatched {
+                background: #fecdd3;
+                border: 1px solid #fda4af;
+                color: #be123c;
+            }
             QFrame#resultsCard QLabel#sectionTitle,
             QFrame#panelCard QLabel#sectionTitle {
                 font-size: 14px;
             }
             QFrame#resultsCard QLabel#summaryLabel {
                 font-size: 12px;
+            }
+            QFrame#resultsCard QLabel#summaryGridLabel {
+                font-size: 12px;
+            }
+            QFrame#resultsCard QLabel#summaryChipMatched,
+            QFrame#resultsCard QLabel#summaryChipReview,
+            QFrame#resultsCard QLabel#summaryChipUnmatched {
+                font-size: 11px;
             }
             QFrame#resultsCard QLabel#countLabel,
             QFrame#resultsCard QLabel#filterLabel,
@@ -970,7 +1198,18 @@ class MainWindow(QMainWindow):
             }
             QComboBox, QDateEdit {
                 min-height: 34px;
-                padding-right: 10px;
+                padding-right: 34px;
+            }
+            QComboBox#compactCombo {
+                min-height: 28px;
+                max-height: 28px;
+                padding-top: 1px;
+                padding-bottom: 1px;
+            }
+            QComboBox:focus,
+            QComboBox:on {
+                outline: none;
+                border: 1px solid #cbd5e1;
             }
             QFrame#resultsCard QLineEdit,
             QFrame#resultsCard QComboBox,
@@ -988,23 +1227,103 @@ class MainWindow(QMainWindow):
             QFrame#panelCard QComboBox {
                 padding: 4px 8px;
             }
+            QFrame#resultsCard QComboBox,
+            QFrame#resultsCard QDateEdit {
+                min-height: 28px;
+                padding-top: 2px;
+                padding-bottom: 2px;
+            }
             QFrame#resultsCard QPushButton,
             QFrame#panelCard QPushButton {
                 padding: 6px 12px;
             }
-            QComboBox::drop-down, QDateEdit::drop-down {
+            QComboBox::drop-down {
+                subcontrol-origin: padding;
+                subcontrol-position: top right;
+                width: 32px;
+                border: none;
+                border-left: 1px solid #dbe4f0;
+                background: #f8fbff;
+                border-top-right-radius: 10px;
+                border-bottom-right-radius: 10px;
+            }
+            QComboBox::down-arrow {
+                image: none;
+                width: 0px;
+                height: 0px;
+            }
+            QDateEdit::drop-down {
                 border: none;
                 width: 28px;
             }
             QComboBox QAbstractItemView {
                 border: 1px solid #cbd5e1;
+                border-radius: 10px;
                 background: white;
                 selection-background-color: #dbeafe;
                 selection-color: #0f172a;
                 outline: 0;
+                padding: 4px;
+            }
+            QComboBox QAbstractItemView::item {
+                min-height: 28px;
+                padding: 6px 10px;
+                margin: 1px 2px;
+                border-radius: 8px;
+            }
+            QComboBox QAbstractItemView::item:hover {
+                background: #eff6ff;
+            }
+            QComboBox QAbstractItemView::item:selected {
+                background: #dbeafe;
+                color: #1d4ed8;
+            }
+            QListView#comboPopup {
+                outline: none;
+                border: 1px solid #cbd5e1;
+                border-radius: 10px;
+                background: white;
+                padding: 4px;
+            }
+            QFrame#comboPopupContainer {
+                border: none;
+                background: transparent;
+            }
+            QListView#comboPopup:focus {
+                outline: none;
+                border: 1px solid #cbd5e1;
+            }
+            QListView#comboPopup::item {
+                min-height: 28px;
+                padding: 6px 10px;
+                margin: 1px 2px;
+                border-radius: 8px;
+            }
+            QListView#comboPopup::item:hover {
+                background: #eff6ff;
+            }
+            QListView#comboPopup::item:selected {
+                background: #dbeafe;
+                color: #1d4ed8;
             }
             QCalendarWidget QWidget {
                 alternate-background-color: #f8fafc;
+            }
+            QCalendarWidget QTableView {
+                background: white;
+                border: 1px solid #dbe4f0;
+                border-top: none;
+                border-bottom-left-radius: 10px;
+                border-bottom-right-radius: 10px;
+                padding: 4px;
+            }
+            QCalendarWidget QWidget#qt_calendar_navigationbar {
+                background: #f8fbff;
+                border: 1px solid #dbe4f0;
+                border-bottom: none;
+                border-top-left-radius: 10px;
+                border-top-right-radius: 10px;
+                min-height: 34px;
             }
             QCalendarWidget QToolButton {
                 color: #0f172a;
@@ -1014,6 +1333,17 @@ class MainWindow(QMainWindow):
                 margin: 4px 2px;
                 padding: 4px 8px;
             }
+            QCalendarWidget QToolButton:hover {
+                background: #eaf2ff;
+                border-radius: 8px;
+            }
+            QCalendarWidget QToolButton#qt_calendar_prevmonth,
+            QCalendarWidget QToolButton#qt_calendar_nextmonth {
+                min-width: 28px;
+                max-width: 28px;
+                min-height: 28px;
+                max-height: 28px;
+            }
             QCalendarWidget QMenu {
                 width: 140px;
                 left: 18px;
@@ -1021,6 +1351,15 @@ class MainWindow(QMainWindow):
             QCalendarWidget QSpinBox {
                 width: 72px;
                 font-weight: 600;
+            }
+            QCalendarWidget QHeaderView::section {
+                background: #f8fbff;
+                color: #475569;
+                border: none;
+                border-bottom: 1px solid #dbe4f0;
+                padding: 6px 4px;
+                font-size: 11px;
+                font-weight: 700;
             }
             QCalendarWidget QAbstractItemView:enabled {
                 color: #18212f;
@@ -1055,6 +1394,31 @@ class MainWindow(QMainWindow):
             }
             QToolButton:hover {
                 color: #1d4ed8;
+            }
+            QToolButton#summaryHelpButton {
+                background: #eef2ff;
+                border: 1px solid #c7d2fe;
+                border-radius: 9px;
+                color: #4338ca;
+                font-size: 11px;
+                font-weight: 800;
+                min-width: 18px;
+                max-width: 18px;
+                min-height: 18px;
+                max-height: 18px;
+                padding: 0;
+            }
+            QToolButton#summaryHelpButton:hover {
+                background: #dbeafe;
+                border-color: #93c5fd;
+                color: #1d4ed8;
+            }
+            QToolTip {
+                background: #111827;
+                color: white;
+                border: 1px solid #1f2937;
+                border-radius: 8px;
+                padding: 8px 10px;
             }
             QHeaderView::section {
                 background: #eaf0f8;
@@ -1122,6 +1486,8 @@ class MainWindow(QMainWindow):
         self.metadata_title.setText(tr(self.current_language, "bank_info"))
         self.results_title.setText(tr(self.current_language, "results"))
         self.locked_label.setText(tr(self.current_language, "results_locked"))
+        self.status_group_label.setText(tr(self.current_language, "status_filter_title"))
+        self.flow_group_label.setText(tr(self.current_language, "flow_filter_title"))
         self._update_grid_toggle_button()
         self.status_buttons["all"].setText(tr(self.current_language, "status_all"))
         self.status_buttons["matched"].setText(tr(self.current_language, "status_matched"))
@@ -1133,6 +1499,7 @@ class MainWindow(QMainWindow):
         self.flow_buttons["tax"].setText(tr(self.current_language, "flow_tax"))
         self.system_grid.title.setText(tr(self.current_language, "system_grid"))
         self.bank_grid.title.setText(tr(self.current_language, "bank_grid"))
+        self.summary_help_button.setToolTip(self._summary_help_tooltip())
         self.system_grid.search.setPlaceholderText(tr(self.current_language, "search"))
         self.bank_grid.search.setPlaceholderText(tr(self.current_language, "search"))
         for key, label in self.metric_titles.items():
@@ -1149,6 +1516,29 @@ class MainWindow(QMainWindow):
         self._update_summary()
         self._update_row_counts()
         self._apply_responsive_layouts()
+
+    def _summary_help_tooltip(self) -> str:
+        texts = {
+            "vi": (
+                "<b>Giải thích trạng thái</b><br>"
+                "Khớp: giao dịch đã dò được cặp tương ứng.<br>"
+                "Cần kiểm tra: tool tìm thấy cặp gần đúng, nên kiểm tra tay lại.<br>"
+                "Không khớp: chưa tìm thấy giao dịch tương ứng."
+            ),
+            "en": (
+                "<b>Status meaning</b><br>"
+                "Matched: a counterpart transaction was found.<br>"
+                "Needs review: a likely pair was found and should be checked manually.<br>"
+                "Unmatched: no counterpart transaction was found."
+            ),
+            "zh": (
+                "<b>状态说明</b><br>"
+                "已匹配：已找到对应交易。<br>"
+                "需要复核：找到接近的对应交易，建议人工再核对。<br>"
+                "未匹配：尚未找到对应交易。"
+            ),
+        }
+        return texts.get(self.current_language, texts["vi"])
 
     def _refresh_history_headers(self) -> None:
         self.history_table.setHorizontalHeaderLabels(
@@ -1189,7 +1579,9 @@ class MainWindow(QMainWindow):
     def _update_locked_state(self, locked: bool) -> None:
         has_result = self.current_result is not None
         self.results_content.setEnabled(not locked)
+        self.results_content.setVisible(has_result)
         self.locked_label.setVisible(locked)
+        self.summary_group.setVisible(has_result)
         self.export_button.setEnabled(not locked and has_result)
         self.metadata_card.setEnabled(has_result)
         self.metadata_card.setVisible(True)
@@ -1206,14 +1598,14 @@ class MainWindow(QMainWindow):
 
     def _update_export_controls_state(self, locked: bool) -> None:
         has_result = self.current_result is not None
-        allow_attach_statement = not locked and has_result and self._active_grid_mode == "system"
+        allow_attach_statement = not locked and has_result
         self.attach_statement_checkbox.setEnabled(allow_attach_statement)
 
     def _start_scan(self) -> None:
         system_path = self._selected_system_path.strip()
         bank_path = self._selected_bank_path.strip()
         if not system_path or not bank_path:
-            logger.warning("Người dùng bấm đối soát nhưng chưa chọn đủ 2 file.")
+            logger.warning("Người dùng bấm dò nhưng chưa chọn đủ 2 file.")
             QMessageBox.warning(
                 self,
                 tr(self.current_language, "app_title"),
@@ -1221,7 +1613,7 @@ class MainWindow(QMainWindow):
             )
             return
         logger.info(
-            "Bắt đầu đối soát từ giao diện. system_file=%s | bank_file=%s",
+            "Bắt đầu dò từ giao diện. system_file=%s | bank_file=%s",
             system_path,
             bank_path,
         )
@@ -1251,22 +1643,17 @@ class MainWindow(QMainWindow):
         self.overlay.hide()
         self.scan_button.setEnabled(True)
         logger.info(
-            "Đối soát hoàn tất trên giao diện. matched=%s | review=%s | unmatched=%s",
+            "Dò hoàn tất trên giao diện. matched=%s | review=%s | unmatched=%s",
             result.summary.matched_system,
             result.summary.review_system,
             result.summary.unmatched_system,
-        )
-        QMessageBox.information(
-            self,
-            tr(self.current_language, "app_title"),
-            tr(self.current_language, "scan_success"),
         )
 
     @Slot(str)
     def _scan_failed(self, message: str) -> None:
         self.overlay.hide()
         self.scan_button.setEnabled(True)
-        logger.error("Đối soát thất bại trên giao diện: %s", message)
+        logger.error("Dò thất bại trên giao diện: %s", message)
         QMessageBox.critical(
             self,
             tr(self.current_language, "app_title"),
@@ -1436,7 +1823,10 @@ class MainWindow(QMainWindow):
 
     def _update_summary(self) -> None:
         if not self.current_result:
-            self.summary_label.setText("")
+            self.summary_grid_label.setText("")
+            self.summary_chip_matched.setText("")
+            self.summary_chip_review.setText("")
+            self.summary_chip_unmatched.setText("")
             return
         summary = self.current_result.summary
         if self._active_grid_mode == "bank":
@@ -1454,7 +1844,10 @@ class MainWindow(QMainWindow):
             "en": f"{grid_label}: {matched} matched, {review} review, {unmatched} unmatched",
             "zh": f"{grid_label}：{matched} 已匹配，{review} 待复核，{unmatched} 未匹配",
         }
-        self.summary_label.setText(labels.get(self.current_language, labels["vi"]))
+        self.summary_grid_label.setText(grid_label)
+        self.summary_chip_matched.setText(f"{matched} {tr(self.current_language, 'matched')}")
+        self.summary_chip_review.setText(f"{review} {tr(self.current_language, 'review')}")
+        self.summary_chip_unmatched.setText(f"{unmatched} {tr(self.current_language, 'unmatched')}")
 
     def _update_row_counts(self) -> None:
         for grid, model, proxy in (
@@ -1464,6 +1857,7 @@ class MainWindow(QMainWindow):
             total = model.total_rows if model else 0
             visible = proxy.rowCount() if proxy else 0
             grid.count.setText(tr(self.current_language, "grid_rows", visible=visible, total=total))
+        self._update_grid_heights()
 
     def _fill_metadata(self, result: ReconciliationResult) -> None:
         metadata = result.metadata
@@ -1608,7 +2002,7 @@ class MainWindow(QMainWindow):
             sheet_name = self._active_export_sheet_name()
             attached_statement_path = (
                 self.current_result.bank_file
-                if self.attach_statement_checkbox.isChecked() and self._active_grid_mode == "system"
+                if self.attach_statement_checkbox.isChecked()
                 else None
             )
             logger.info(
@@ -1809,6 +2203,7 @@ class MainWindow(QMainWindow):
         self._update_grid_toggle_button()
         self._update_summary()
         self._update_export_controls_state(self.current_result is None)
+        self._update_grid_heights()
 
     def _update_grid_toggle_button(self) -> None:
         labels = {
