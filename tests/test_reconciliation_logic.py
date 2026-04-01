@@ -156,7 +156,7 @@ class ReconciliationLogicTests(unittest.TestCase):
         self.assertEqual(system_rows[1].status, "unmatched")
         self.assertEqual(bank_rows[0].matched_system_id, "sys-1")
 
-    def test_ambiguous_same_amount_same_day_stays_review(self) -> None:
+    def test_ambiguous_same_amount_same_day_becomes_review(self) -> None:
         system_rows = [
             make_system(
                 row_id="sys-1",
@@ -191,6 +191,59 @@ class ReconciliationLogicTests(unittest.TestCase):
                 amount=100_000_000,
                 direction="expense",
                 reference_number="FT2",
+            ),
+        ]
+
+        self.service._run_matching_cycles(system_rows, bank_rows)
+
+        self.assertTrue(all(row.status == "review" for row in system_rows))
+        self.assertTrue(all(row.status == "review" for row in bank_rows))
+        self.assertEqual(system_rows[0].review_bank_ids, ["bank-1", "bank-2"])
+        self.assertEqual(system_rows[1].review_bank_ids, ["bank-1", "bank-2"])
+        self.assertEqual(bank_rows[0].review_system_ids, ["sys-1", "sys-2"])
+        self.assertEqual(bank_rows[1].review_system_ids, ["sys-1", "sys-2"])
+
+    def test_ft_same_amount_same_day_with_text_clues_becomes_review(self) -> None:
+        system_rows = [
+            make_system(
+                row_id="sys-1",
+                excel_row=1,
+                voucher_date=date(2026, 3, 10),
+                amount=100_000_000,
+                direction="income",
+                voucher_number="记-0001",
+                summary="LINH AN thu tien hang",
+            ),
+            make_system(
+                row_id="sys-2",
+                excel_row=2,
+                voucher_date=date(2026, 3, 10),
+                amount=100_000_000,
+                direction="income",
+                voucher_number="记-0002",
+                summary="PHU HOA thu tien hang",
+            ),
+        ]
+        bank_rows = [
+            make_bank(
+                row_id="bank-1",
+                excel_row=10,
+                transaction_date=date(2026, 3, 10),
+                amount=100_000_000,
+                direction="income",
+                reference_number="FT260000000001",
+                reference_prefixes={"FT"},
+                description="Linh An thanh toan",
+            ),
+            make_bank(
+                row_id="bank-2",
+                excel_row=11,
+                transaction_date=date(2026, 3, 10),
+                amount=100_000_000,
+                direction="income",
+                reference_number="FT260000000002",
+                reference_prefixes={"FT"},
+                description="Phu Hoa thanh toan",
             ),
         ]
 
@@ -239,11 +292,51 @@ class ReconciliationLogicTests(unittest.TestCase):
         self.service._run_matching_cycles(system_rows, bank_rows)
 
         self.assertEqual(system_rows[0].status, "matched")
+        self.assertEqual(system_rows[0].match_type, "group")
+        self.assertTrue(system_rows[0].group_id)
         self.assertTrue(system_rows[0].matched_tax)
         self.assertEqual(system_rows[1].status, "unmatched")
         self.assertFalse(system_rows[1].matched_tax)
         self.assertTrue(all(row.status == "matched" for row in bank_rows))
         self.assertTrue(all(row.matched_tax for row in bank_rows))
+        self.assertTrue(all(row.match_type == "group" for row in bank_rows))
+        self.assertEqual(len({row.group_id for row in bank_rows}), 1)
+        self.assertEqual(system_rows[0].group_id, bank_rows[0].group_id)
+
+    def test_tax_aggregate_unique_near_date_is_still_group_matched(self) -> None:
+        system_rows = [
+            make_system(
+                row_id="sys-tax",
+                excel_row=72,
+                voucher_date=date(2026, 3, 10),
+                amount=880_000,
+                direction="expense",
+                voucher_number="记-0802",
+                summary="支付手机短信费用",
+            )
+        ]
+        bank_rows = [
+            make_bank(
+                row_id=f"bank-tax-{index}",
+                excel_row=380 + index,
+                transaction_date=date(2026, 3, 9),
+                amount=110_000,
+                direction="expense",
+                reference_number=f"HB.{index}",
+                description="Thu phi Homebanking",
+                fee=-100_000,
+                vat=-10_000,
+                has_tax=True,
+            )
+            for index in range(1, 9)
+        ]
+
+        self.service._run_matching_cycles(system_rows, bank_rows)
+
+        self.assertEqual(system_rows[0].status, "matched")
+        self.assertEqual(system_rows[0].match_type, "group")
+        self.assertTrue(all(row.status == "matched" for row in bank_rows))
+        self.assertTrue(all(row.match_type == "group" for row in bank_rows))
 
     def test_tax_filter_is_precise_for_system_and_bank(self) -> None:
         system_rows = [
@@ -312,6 +405,35 @@ class ReconciliationLogicTests(unittest.TestCase):
         self.assertEqual(system_row, system_rows[1].display_values[0])
         self.assertEqual(bank_row, bank_rows[1].display_values[0])
 
+    def test_reference_filter_supports_tt_prefix(self) -> None:
+        rows = [
+            make_bank(
+                row_id="bank-tt",
+                excel_row=10,
+                transaction_date=date(2026, 3, 10),
+                amount=100_000,
+                direction="income",
+                reference_number="TT260000000001",
+                reference_prefixes={"TT"},
+            ),
+            make_bank(
+                row_id="bank-ft",
+                excel_row=11,
+                transaction_date=date(2026, 3, 10),
+                amount=200_000,
+                direction="income",
+                reference_number="FT260000000002",
+                reference_prefixes={"FT"},
+            ),
+        ]
+        model = TransactionsTableModel(["Ngay", "Ma"], rows)
+        proxy = TransactionsFilterProxyModel()
+        proxy.setSourceModel(model)
+
+        proxy.set_reference_mode("TT")
+        self.assertEqual(proxy.rowCount(), 1)
+        self.assertEqual(proxy.index(0, 0).data(role=0), rows[0].display_values[0])
+
     def test_unique_same_amount_same_day_is_matched(self) -> None:
         system_rows = [
             make_system(
@@ -338,6 +460,8 @@ class ReconciliationLogicTests(unittest.TestCase):
 
         self.assertEqual(system_rows[0].status, "matched")
         self.assertEqual(bank_rows[0].status, "matched")
+        self.assertEqual(system_rows[0].match_type, "exact")
+        self.assertEqual(bank_rows[0].match_type, "exact")
 
     def test_direction_mismatch_stays_unmatched(self) -> None:
         system_rows = [
@@ -393,7 +517,7 @@ class ReconciliationLogicTests(unittest.TestCase):
         self.assertEqual(system_rows[0].status, "review")
         self.assertEqual(bank_rows[0].status, "review")
 
-    def test_status_filter_separates_review_from_matched(self) -> None:
+    def test_status_filter_separates_exact_group_review_and_unmatched(self) -> None:
         rows = [
             make_system(
                 row_id="sys-1",
@@ -419,23 +543,37 @@ class ReconciliationLogicTests(unittest.TestCase):
                 direction="expense",
                 voucher_number="记-3",
             ),
+            make_system(
+                row_id="sys-4",
+                excel_row=4,
+                voucher_date=date(2026, 3, 10),
+                amount=40,
+                direction="expense",
+                voucher_number="记-4",
+            ),
         ]
         rows[0].status = "matched"
-        rows[1].status = "review"
-        rows[2].status = "unmatched"
+        rows[0].match_type = "exact"
+        rows[1].status = "matched"
+        rows[1].match_type = "group"
+        rows[1].group_id = "VAT-0001"
+        rows[2].status = "review"
+        rows[3].status = "unmatched"
 
         model = TransactionsTableModel(["Ngay", "So"], rows)
         proxy = TransactionsFilterProxyModel()
         proxy.setSourceModel(model)
 
-        proxy.set_status_mode("matched")
+        proxy.set_status_mode("matched_exact")
+        self.assertEqual(proxy.rowCount(), 1)
+        proxy.set_status_mode("matched_group")
         self.assertEqual(proxy.rowCount(), 1)
         proxy.set_status_mode("review")
         self.assertEqual(proxy.rowCount(), 1)
         proxy.set_status_mode("unmatched")
         self.assertEqual(proxy.rowCount(), 1)
         proxy.set_status_mode("all")
-        self.assertEqual(proxy.rowCount(), 3)
+        self.assertEqual(proxy.rowCount(), 4)
 
 
 if __name__ == "__main__":

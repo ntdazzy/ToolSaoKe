@@ -49,10 +49,15 @@ class SystemTransaction:
     has_tax: bool = False
     matched_tax: bool = False
     status: str = "unmatched"
+    match_type: str = "none"
+    group_id: str | None = None
+    group_order: int = 0
     confidence: int = 0
     match_reason: str = ""
     matched_bank_id: str | None = None
     matched_bank_row: int | None = None
+    review_bank_ids: list[str] = field(default_factory=list)
+    review_bank_rows: list[int] = field(default_factory=list)
 
 
 @dataclass
@@ -81,10 +86,15 @@ class BankTransaction:
     has_tax: bool = False
     matched_tax: bool = False
     status: str = "unmatched"
+    match_type: str = "none"
+    group_id: str | None = None
+    group_order: int = 0
     confidence: int = 0
     match_reason: str = ""
     matched_system_id: str | None = None
     matched_system_row: int | None = None
+    review_system_ids: list[str] = field(default_factory=list)
+    review_system_rows: list[int] = field(default_factory=list)
 
 
 @dataclass

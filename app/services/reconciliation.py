@@ -82,6 +82,7 @@ class ReconciliationService:
         system_rows: list[SystemTransaction],
         bank_rows: list[BankTransaction],
     ) -> None:
+        self._group_sequence = 0
         iteration = 0
         while True:
             iteration += 1
@@ -94,7 +95,12 @@ class ReconciliationService:
                 break
 
         final_progress = self._match_transactions_pass(system_rows, bank_rows, FINAL_STAGE, allow_review=True)
-        logger.debug("Vòng dò cuối cho các ca còn lại hoàn tất. progress=%s", final_progress)
+        review_progress = self._mark_remaining_review_candidates(system_rows, bank_rows)
+        logger.debug(
+            "Vòng dò cuối cho các ca còn lại hoàn tất. matched_progress=%s | review_progress=%s",
+            final_progress,
+            review_progress,
+        )
 
     def _match_transactions_pass(
         self,
@@ -119,6 +125,16 @@ class ReconciliationService:
             system_group = system_groups.get(group_key, [])
             bank_group = bank_groups.get(group_key, [])
             if not system_group or not bank_group:
+                continue
+            if stage == FINAL_STAGE and len(system_group) > 1 and len(bank_group) > 1:
+                logger.debug(
+                    "Bỏ qua nhóm n-n ở vòng cuối để tránh auto-match rủi ro. "
+                    "direction=%s | amount=%s | system_rows=%s | bank_rows=%s",
+                    group_key[0],
+                    group_key[1],
+                    len(system_group),
+                    len(bank_group),
+                )
                 continue
 
             candidate_map, per_system_scores, per_bank_scores = self._build_stage_candidates(
@@ -243,6 +259,12 @@ class ReconciliationService:
         bank_has_vat = abs(getattr(bank_row, "vat", 0)) > 0
         system_row.status = status
         bank_row.status = status
+        system_row.match_type = "exact"
+        bank_row.match_type = "exact"
+        system_row.group_id = None
+        bank_row.group_id = None
+        system_row.group_order = 0
+        bank_row.group_order = 0
         system_row.confidence = pair.score
         bank_row.confidence = pair.score
         system_row.match_reason = "\n".join(pair.reasons)
@@ -251,6 +273,10 @@ class ReconciliationService:
         bank_row.matched_system_id = system_row.row_id
         system_row.matched_bank_row = bank_row.excel_row
         bank_row.matched_system_row = system_row.excel_row
+        system_row.review_bank_ids = []
+        system_row.review_bank_rows = []
+        bank_row.review_system_ids = []
+        bank_row.review_system_rows = []
         system_row.has_tax = system_row.has_tax or bank_row.has_tax
         system_row.matched_tax = system_row.matched_tax or bank_has_vat
         bank_row.matched_tax = bank_row.matched_tax or bank_has_vat
@@ -317,7 +343,7 @@ class ReconciliationService:
                 and abs((row.voucher_date - group_date).days) <= 1
             ]
             if len(near_candidates) == 1:
-                self._mark_tax_group_match(near_candidates[0], group_rows, "review")
+                self._mark_tax_group_match(near_candidates[0], group_rows, "matched")
                 matched_system_ids.add(near_candidates[0].row_id)
                 matched_group_count += 1
 
@@ -328,12 +354,125 @@ class ReconciliationService:
             )
         return matched_group_count
 
+    def _mark_remaining_review_candidates(
+        self,
+        system_rows: list[SystemTransaction],
+        bank_rows: list[BankTransaction],
+    ) -> int:
+        system_groups: dict[tuple[str, int], list[SystemTransaction]] = defaultdict(list)
+        bank_groups: dict[tuple[str, int], list[BankTransaction]] = defaultdict(list)
+
+        for row in system_rows:
+            if row.status == "unmatched" and row.amount > 0:
+                system_groups[(row.direction, row.amount)].append(row)
+        for row in bank_rows:
+            if row.status == "unmatched" and row.amount > 0:
+                bank_groups[(row.direction, row.amount)].append(row)
+
+        changed = 0
+        for group_key in sorted(set(system_groups) & set(bank_groups)):
+            system_group = system_groups[group_key]
+            bank_group = bank_groups[group_key]
+            if not system_group or not bank_group:
+                continue
+
+            pair_scores: dict[tuple[str, str], PairScore] = {}
+            for system_row in system_group:
+                for bank_row in bank_group:
+                    pair_scores[(system_row.row_id, bank_row.row_id)] = self._score_pair(
+                        system_row,
+                        bank_row,
+                        len(system_group),
+                        len(bank_group),
+                    )
+
+            same_day_by_system: dict[str, int] = defaultdict(int)
+            same_day_by_bank: dict[str, int] = defaultdict(int)
+            for (system_id, bank_id), pair in pair_scores.items():
+                if pair.date_gap == 0:
+                    same_day_by_system[system_id] += 1
+                    same_day_by_bank[bank_id] += 1
+
+            system_candidates: dict[str, list[tuple[BankTransaction, PairScore]]] = defaultdict(list)
+            bank_candidates: dict[str, list[tuple[SystemTransaction, PairScore]]] = defaultdict(list)
+            system_lookup = {row.row_id: row for row in system_group}
+            bank_lookup = {row.row_id: row for row in bank_group}
+            for (system_id, bank_id), pair in pair_scores.items():
+                if not self._review_candidate_allowed(
+                    pair,
+                    same_day_by_system.get(system_id, 0),
+                    same_day_by_bank.get(bank_id, 0),
+                ):
+                    continue
+                system_candidates[system_id].append((bank_lookup[bank_id], pair))
+                bank_candidates[bank_id].append((system_lookup[system_id], pair))
+
+            for system_id, candidates in system_candidates.items():
+                changed += self._apply_review_candidates(system_lookup[system_id], candidates, counterpart_label="sao kê")
+            for bank_id, candidates in bank_candidates.items():
+                changed += self._apply_review_candidates(bank_lookup[bank_id], candidates, counterpart_label="hệ thống")
+
+        if changed:
+            logger.info("Đã chuyển %s dòng còn lại sang trạng thái review vì có ứng viên hợp lý.", changed)
+        return changed
+
+    @staticmethod
+    def _review_candidate_allowed(pair: PairScore, system_same_day_count: int, bank_same_day_count: int) -> bool:
+        if pair.has_reference:
+            return True
+        if pair.date_gap == 0:
+            return True
+        if pair.date_gap <= 1 and pair.text_score >= 0.3:
+            return True
+        if pair.date_gap <= 3 and pair.text_score >= 0.45:
+            return True
+        if pair.mutual_closest and pair.date_gap <= 1:
+            return True
+        return False
+
+    def _apply_review_candidates(self, row, candidates: list[tuple[object, PairScore]], *, counterpart_label: str) -> int:
+        if row.status != "unmatched" or not candidates:
+            return 0
+        ordered = sorted(
+            candidates,
+            key=lambda item: self._pair_priority(item[1]),
+            reverse=True,
+        )
+        preview = ", ".join(str(getattr(candidate, "excel_row", "")) for candidate, _pair in ordered[:3] if getattr(candidate, "excel_row", None))
+        top_pair = ordered[0][1]
+        row.status = "review"
+        row.match_type = "none"
+        row.group_id = None
+        row.group_order = 0
+        row.confidence = min(max(top_pair.score, 55), 79)
+        counterpart_ids = [getattr(candidate, "row_id", "") for candidate, _pair in ordered if getattr(candidate, "row_id", "")]
+        counterpart_rows = [getattr(candidate, "excel_row", 0) for candidate, _pair in ordered if getattr(candidate, "excel_row", None)]
+        if hasattr(row, "matched_bank_id"):
+            row.matched_bank_id = None
+            row.matched_bank_row = None
+            row.review_bank_ids = counterpart_ids
+            row.review_bank_rows = counterpart_rows
+        if hasattr(row, "matched_system_id"):
+            row.matched_system_id = None
+            row.matched_system_row = None
+            row.review_system_ids = counterpart_ids
+            row.review_system_rows = counterpart_rows
+        reason_lines = [
+            f"Có {len(ordered)} ứng viên {counterpart_label} cùng chiều và cùng số tiền.",
+            *top_pair.reasons[:3],
+        ]
+        if preview:
+            reason_lines.append(f"Dòng ứng viên {counterpart_label}: {preview}")
+        row.match_reason = "\n".join(reason_lines)
+        return 1
+
     def _mark_tax_group_match(
         self,
         system_row: SystemTransaction,
         bank_rows: list[BankTransaction],
         status: str,
     ) -> None:
+        group_id = self._next_group_id("vat")
         total_amount = sum(row.amount for row in bank_rows)
         first_bank_row = min(bank_rows, key=lambda row: row.excel_row)
         group_date = self._bank_effective_date(first_bank_row)
@@ -343,24 +482,38 @@ class ReconciliationService:
         )
         confidence = 92 if status == "matched" else 76
         system_row.status = status
+        system_row.match_type = "group"
+        system_row.group_id = group_id
+        system_row.group_order = 0
         system_row.confidence = confidence
         system_row.match_reason = reason
         system_row.has_tax = True
         system_row.matched_tax = True
         system_row.matched_bank_id = first_bank_row.row_id
         system_row.matched_bank_row = first_bank_row.excel_row
+        system_row.review_bank_ids = []
+        system_row.review_bank_rows = []
         shared_prefixes = set(system_row.reference_prefixes)
-        for bank_row in bank_rows:
+        for order, bank_row in enumerate(sorted(bank_rows, key=lambda row: row.excel_row), start=1):
             bank_row.status = status
+            bank_row.match_type = "group"
+            bank_row.group_id = group_id
+            bank_row.group_order = order
             bank_row.confidence = confidence
             bank_row.match_reason = reason
             bank_row.matched_tax = True
             bank_row.matched_system_id = system_row.row_id
             bank_row.matched_system_row = system_row.excel_row
+            bank_row.review_system_ids = []
+            bank_row.review_system_rows = []
             shared_prefixes |= bank_row.reference_prefixes
         system_row.reference_prefixes = shared_prefixes
         for bank_row in bank_rows:
             bank_row.reference_prefixes = shared_prefixes
+
+    def _next_group_id(self, prefix: str) -> str:
+        self._group_sequence += 1
+        return f"{prefix.upper()}-{self._group_sequence:04d}"
 
     @staticmethod
     def _bank_effective_date(bank_row: BankTransaction) -> date | None:

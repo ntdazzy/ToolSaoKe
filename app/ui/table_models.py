@@ -12,10 +12,42 @@ from app.services.utils import normalize_text, parse_vnd_int
 
 
 STATUS_COLORS = {
-    "matched": QColor("#ffffff"),
+    "matched_exact": QColor("#f8fbff"),
     "review": QColor("#fef3c7"),
-    "unmatched": QColor("#f4b2b8"),
+    "unmatched": QColor("#fecdd3"),
 }
+
+GROUP_COLORS = [
+    QColor("#e9f2ff"),
+    QColor("#eefbf3"),
+    QColor("#fff5e8"),
+    QColor("#f6efff"),
+    QColor("#eef8fb"),
+    QColor("#fff2f7"),
+]
+
+
+def status_bucket_for_row(row) -> str:
+    if getattr(row, "status", "unmatched") == "matched":
+        return "matched_group" if getattr(row, "match_type", "none") == "group" else "matched_exact"
+    if getattr(row, "status", "unmatched") == "review":
+        return "review"
+    return "unmatched"
+
+
+def group_color_for_row(row) -> QColor | None:
+    group_id = getattr(row, "group_id", None)
+    if getattr(row, "match_type", "none") != "group" or not group_id:
+        return None
+    color_index = sum(ord(character) for character in group_id) % len(GROUP_COLORS)
+    return GROUP_COLORS[color_index]
+
+
+def row_background_color(row) -> QColor:
+    group_color = group_color_for_row(row)
+    if group_color is not None and getattr(row, "status", "unmatched") == "matched":
+        return group_color
+    return STATUS_COLORS.get(status_bucket_for_row(row), QColor("#f8fbff"))
 
 
 class TransactionsTableModel(QAbstractTableModel):
@@ -60,13 +92,14 @@ class TransactionsTableModel(QAbstractTableModel):
                 if parse_vnd_int(value) < 0:
                     return QColor("#dc2626")
         if role == Qt.BackgroundRole:
-            return STATUS_COLORS.get(row.status)
+            return row_background_color(row)
         if role == Qt.ToolTipRole:
-            status_key = row.status if row.status in ("matched", "review", "unmatched") else "unmatched"
-            status_text = tr(self._language, status_key)
+            status_text = tr(self._language, status_bucket_for_row(row))
             reasons = [segment.strip() for segment in (row.match_reason or "").splitlines() if segment.strip()]
             reason_text = "\n".join(f"- {item}" for item in reasons)
-            return f"{status_text}\n{reason_text}".strip()
+            group_id = getattr(row, "group_id", None)
+            group_text = f"\nGroup: {group_id}" if group_id else ""
+            return f"{status_text}{group_text}\n{reason_text}".strip()
         if role == Qt.UserRole:
             return row
         if role == Qt.UserRole + 1:
@@ -141,11 +174,27 @@ class TransactionsFilterProxyModel(QSortFilterProxyModel):
     def filterAcceptsRow(self, source_row: int, source_parent: QModelIndex) -> bool:
         model: TransactionsTableModel = self.sourceModel()  # type: ignore[assignment]
         row = model.row_object(source_row)
-        if self._status_mode == "matched" and row.status != "matched":
+        return self._accepts_row_object(row, self._status_mode)
+
+    def count_for_status_mode(self, mode: str) -> int:
+        model: TransactionsTableModel | None = self.sourceModel()  # type: ignore[assignment]
+        if model is None:
+            return 0
+        return sum(
+            1
+            for source_row in range(model.rowCount())
+            if self._accepts_row_object(model.row_object(source_row), mode)
+        )
+
+    def _accepts_row_object(self, row, status_mode: str) -> bool:
+        row_bucket = status_bucket_for_row(row)
+        if status_mode == "matched_exact" and row_bucket != "matched_exact":
             return False
-        if self._status_mode == "review" and row.status != "review":
+        if status_mode == "matched_group" and row_bucket != "matched_group":
             return False
-        if self._status_mode == "unmatched" and row.status != "unmatched":
+        if status_mode == "review" and row_bucket != "review":
+            return False
+        if status_mode == "unmatched" and row_bucket != "unmatched":
             return False
         if self._flow_mode == "income" and row.direction != "income":
             return False
@@ -177,6 +226,31 @@ class TransactionsFilterProxyModel(QSortFilterProxyModel):
             if self._search_text not in haystack:
                 return False
         return True
+
+    def lessThan(self, left: QModelIndex, right: QModelIndex) -> bool:
+        left_row = left.data(Qt.UserRole)
+        right_row = right.data(Qt.UserRole)
+        if left_row is not None and right_row is not None:
+            left_group = getattr(left_row, "group_id", None)
+            right_group = getattr(right_row, "group_id", None)
+            if self._status_mode == "matched_group":
+                if left_group != right_group:
+                    return str(left_group or "") < str(right_group or "")
+                left_order = getattr(left_row, "group_order", getattr(left_row, "excel_row", 0))
+                right_order = getattr(right_row, "group_order", getattr(right_row, "excel_row", 0))
+                if left_order != right_order:
+                    return left_order < right_order
+            elif left_group and left_group == right_group:
+                left_order = getattr(left_row, "group_order", getattr(left_row, "excel_row", 0))
+                right_order = getattr(right_row, "group_order", getattr(right_row, "excel_row", 0))
+                if left_order != right_order:
+                    return left_order < right_order
+
+        left_value = left.data(self.sortRole())
+        right_value = right.data(self.sortRole())
+        if isinstance(left_value, (int, float)) and isinstance(right_value, (int, float)):
+            return left_value < right_value
+        return str(left_value or "") < str(right_value or "")
 
     @staticmethod
     def _row_date(row) -> date | None:

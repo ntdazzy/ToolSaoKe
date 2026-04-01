@@ -6,9 +6,10 @@ from html import escape
 import logging
 from pathlib import Path
 
-from PySide6.QtCore import QDate, QObject, QThread, Qt, Signal, Slot, QTimer
+from PySide6.QtCore import QDate, QObject, QSize, QThread, Qt, Signal, Slot, QTimer
 from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import (
+    QApplication,
     QBoxLayout,
     QButtonGroup,
     QCheckBox,
@@ -43,7 +44,7 @@ from app.services.exporter import export_system_rows
 from app.services.history_store import HistoryStore
 from app.services.reconciliation import ReconciliationService
 from app.services.utils import format_vnd
-from app.ui.table_models import TransactionsFilterProxyModel, TransactionsTableModel
+from app.ui.table_models import TransactionsFilterProxyModel, TransactionsTableModel, status_bucket_for_row
 from app.ui.widgets import FrozenTableView, InstantToolTipButton, LoadingOverlay, PopupDateEdit, StyledComboBox
 
 logger = logging.getLogger(__name__)
@@ -91,10 +92,10 @@ class PairDialog(QDialog):
         language: str,
         system_title: str,
         system_headers: list[str],
-        system_row,
+        system_rows,
         bank_title: str,
         bank_headers: list[str],
-        bank_row,
+        bank_rows,
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
@@ -102,15 +103,17 @@ class PairDialog(QDialog):
         if logo_path.exists():
             self.setWindowIcon(QIcon(str(logo_path)))
         self.language = language
+        self.system_rows = list(system_rows or [])
+        self.bank_rows = list(bank_rows or [])
         self.setWindowTitle(tr(language, "open_pair_title"))
         self.resize(960, 620)
         layout = QHBoxLayout(self)
         layout.setContentsMargins(18, 18, 18, 18)
         layout.setSpacing(16)
-        layout.addWidget(self._build_panel(system_title, system_headers, system_row), 1)
-        layout.addWidget(self._build_panel(bank_title, bank_headers, bank_row), 1)
+        layout.addWidget(self._build_panel(system_title, system_headers, self.system_rows, self.bank_rows), 1)
+        layout.addWidget(self._build_panel(bank_title, bank_headers, self.bank_rows, self.system_rows), 1)
 
-    def _build_panel(self, title: str, headers: list[str], row) -> QWidget:
+    def _build_panel(self, title: str, headers: list[str], rows: list[object], counterpart_rows: list[object]) -> QWidget:
         panel = QFrame(self)
         panel.setObjectName("card")
         layout = QVBoxLayout(panel)
@@ -120,11 +123,11 @@ class PairDialog(QDialog):
         title_label.setObjectName("sectionTitle")
         browser = QTextBrowser(panel)
         browser.setOpenExternalLinks(False)
-        browser.setHtml(self._build_details_html(headers, row))
+        browser.setHtml(self._build_details_html(headers, rows))
         layout.addWidget(title_label)
         layout.addWidget(browser, 1)
 
-        if row is not None:
+        if rows:
             toggle = QToolButton(panel)
             toggle.setCheckable(True)
             toggle.setChecked(False)
@@ -136,7 +139,7 @@ class PairDialog(QDialog):
             explanation.setOpenExternalLinks(False)
             explanation.setVisible(False)
             explanation.setMaximumHeight(220)
-            explanation.setHtml(self._build_explanation_html(row))
+            explanation.setHtml(self._build_explanation_html(rows, counterpart_rows))
 
             toggle.toggled.connect(
                 lambda checked, button=toggle, widget=explanation: self._toggle_explanation(button, widget, checked)
@@ -145,36 +148,79 @@ class PairDialog(QDialog):
             layout.addWidget(explanation)
         return panel
 
-    def _build_details_html(self, headers: list[str], row) -> str:
-        if row is None:
+    def _build_details_html(self, headers: list[str], rows: list[object]) -> str:
+        if not rows:
             return f"<p>{escape(tr(self.language, 'no_pair'))}</p>"
+        if len(rows) == 1:
+            details_rows = self._single_row_details(headers, rows[0])
+            return self._table_html(details_rows) if details_rows else f"<p>{escape(tr(self.language, 'no_pair'))}</p>"
+
+        html_sections = [
+            "<div style='margin-bottom:10px;padding:10px 12px;border:1px solid #dbe4f0;"
+            "border-radius:12px;background:#f8fbff'>"
+            f"<b>{escape(self._label('group_summary'))}</b><br>"
+            f"{escape(self._label('group_rows'))}: {len(rows)}<br>"
+            f"{escape(self._label('group_total'))}: {escape(format_vnd(sum(getattr(row, 'amount', 0) for row in rows)))}"
+            "</div>"
+        ]
+        for index, row in enumerate(rows, start=1):
+            details_rows = self._single_row_details(headers, row)
+            if not details_rows:
+                continue
+            html_sections.append(
+                "<div style='margin-bottom:14px'>"
+                f"<div style='margin-bottom:6px;font-weight:700;color:#0f172a'>"
+                f"{escape(self._row_heading(index, row))}"
+                "</div>"
+                f"{self._table_html(details_rows)}"
+                "</div>"
+            )
+        if len(html_sections) == 1:
+            return f"<p>{escape(tr(self.language, 'no_pair'))}</p>"
+        return "".join(html_sections)
+
+    def _single_row_details(self, headers: list[str], row) -> list[str]:
         rows: list[str] = []
         for header, value in zip(headers, row.display_values, strict=False):
             text = (value or "").strip()
             if not text:
                 continue
             rows.append(self._table_row(header, text))
-        if not rows:
-            return f"<p>{escape(tr(self.language, 'no_pair'))}</p>"
-        return self._table_html(rows)
+        return rows
 
-    def _build_explanation_html(self, row) -> str:
-        counterpart_row = getattr(row, "matched_bank_row", None) or getattr(row, "matched_system_row", None)
+    def _build_explanation_html(self, current_rows: list[object], counterpart_rows: list[object]) -> str:
+        first_row = current_rows[0]
+        counterpart_first = counterpart_rows[0] if counterpart_rows else None
+        counterpart_row = (
+            getattr(first_row, "matched_bank_row", None)
+            or getattr(first_row, "matched_system_row", None)
+            or getattr(counterpart_first, "excel_row", None)
+        )
+        current_total = sum(getattr(row, "amount", 0) for row in current_rows)
+        counterpart_total = sum(getattr(row, "amount", 0) for row in counterpart_rows)
         rows = [
+            self._table_row(self._label("status_label"), tr(self.language, status_bucket_for_row(first_row))),
+            self._table_row(self._label("match_type_label"), self._match_type_text(first_row)),
+            self._table_row(self._label("group_id_label"), getattr(first_row, "group_id", None) or self._label("debug_none")),
+            self._table_row(self._label("group_shape_label"), f"{len(current_rows)}-{len(counterpart_rows)}"),
+            self._table_row(self._label("group_total_current"), format_vnd(current_total)),
+            self._table_row(self._label("group_total_counterpart"), format_vnd(counterpart_total)),
+            self._table_row(self._label("group_diff"), format_vnd(current_total - counterpart_total)),
+            self._table_row(self._label("debug_confidence"), self._format_confidence(getattr(first_row, "confidence", 0))),
             self._table_row(
-                self._label("status_label"),
-                tr(self.language, row.status if row.status in ("matched", "review", "unmatched") else "unmatched"),
+                self._label("debug_current_row"),
+                self._rows_label(current_rows),
             ),
-            self._table_row(self._label("debug_confidence"), self._format_confidence(getattr(row, "confidence", 0))),
-            self._table_row(self._label("debug_current_row"), str(getattr(row, "excel_row", "") or self._label("debug_none"))),
             self._table_row(
                 self._label("debug_counterpart_row"),
-                str(counterpart_row) if counterpart_row else self._label("debug_none"),
+                self._rows_label(counterpart_rows) if counterpart_rows else (
+                    str(counterpart_row) if counterpart_row else self._label("debug_none")
+                ),
             ),
-            self._table_row(self._label("debug_date_basis"), self._date_basis_label(getattr(row, "match_reason", ""))),
+            self._table_row(self._label("debug_date_basis"), self._date_basis_label(getattr(first_row, "match_reason", ""))),
             self._table_row(
                 self._label("debug_basis"),
-                self._format_match_basis(getattr(row, "match_reason", "")),
+                self._format_match_basis(getattr(first_row, "match_reason", "")),
                 is_html=True,
             ),
         ]
@@ -208,30 +254,41 @@ class PairDialog(QDialog):
         button.setArrowType(Qt.DownArrow if checked else Qt.RightArrow)
         button.setText(self._label("explain_hide") if checked else self._label("explain_show"))
 
-    def _debug_rows(self, row) -> list[str]:
-        counterpart_row = getattr(row, "matched_bank_row", None) or getattr(row, "matched_system_row", None)
-        return [
-            self._debug_row(
-                "status_label",
-                tr(self.language, row.status if row.status in ("matched", "review", "unmatched") else "unmatched"),
-            ),
-            self._debug_row("debug_confidence", self._format_confidence(getattr(row, "confidence", 0))),
-            self._debug_row("debug_current_row", str(getattr(row, "excel_row", "") or self._label("debug_none"))),
-            self._debug_row("debug_counterpart_row", str(counterpart_row) if counterpart_row else self._label("debug_none")),
-            self._debug_row("debug_date_basis", self._date_basis_label(getattr(row, "match_reason", ""))),
-            self._debug_row("debug_basis", self._format_match_basis(getattr(row, "match_reason", "")), is_html=True),
-        ]
+    def _rows_label(self, rows: list[object]) -> str:
+        if not rows:
+            return self._label("debug_none")
+        return ", ".join(str(getattr(row, "excel_row", "")) for row in rows if getattr(row, "excel_row", None))
 
-    def _debug_row(self, key: str, value: str, *, is_html: bool = False) -> str:
+    def _row_heading(self, index: int, row) -> str:
         return (
-            f"<tr><td style='padding:6px 10px;font-weight:600;width:180px'>{escape(self._label(key))}</td>"
-            f"<td style='padding:6px 10px'>{value if is_html else escape(value or self._label('debug_none'))}</td></tr>"
+            f"{self._label('group_row')} {index} | "
+            f"{self._label('debug_current_row')}: {getattr(row, 'excel_row', self._label('debug_none'))} | "
+            f"{self._label('group_amount')}: {format_vnd(getattr(row, 'amount', 0))}"
         )
+
+    def _match_type_text(self, row) -> str:
+        match_type = getattr(row, "match_type", "none")
+        if match_type == "group":
+            return tr(self.language, "matched_group")
+        if match_type == "exact":
+            return tr(self.language, "matched_exact")
+        return self._label("debug_none")
 
     def _label(self, key: str) -> str:
         labels = {
             "vi": {
                 "status_label": "Trạng thái",
+                "match_type_label": "Kiểu khớp",
+                "group_id_label": "Mã nhóm",
+                "group_shape_label": "Cấu trúc nhóm",
+                "group_total_current": "Tổng tiền bên này",
+                "group_total_counterpart": "Tổng tiền bên kia",
+                "group_diff": "Chênh lệch",
+                "group_summary": "Tóm tắt nhóm giao dịch",
+                "group_rows": "Số dòng",
+                "group_total": "Tổng tiền",
+                "group_row": "Dòng",
+                "group_amount": "Số tiền",
                 "debug_confidence": "Độ tin cậy",
                 "debug_current_row": "Dòng hiện tại",
                 "debug_counterpart_row": "Dòng đối ứng",
@@ -245,6 +302,17 @@ class PairDialog(QDialog):
             },
             "en": {
                 "status_label": "Status",
+                "match_type_label": "Match type",
+                "group_id_label": "Group ID",
+                "group_shape_label": "Group shape",
+                "group_total_current": "This side total",
+                "group_total_counterpart": "Other side total",
+                "group_diff": "Difference",
+                "group_summary": "Grouped transaction summary",
+                "group_rows": "Rows",
+                "group_total": "Total amount",
+                "group_row": "Row",
+                "group_amount": "Amount",
                 "debug_confidence": "Confidence",
                 "debug_current_row": "Current row",
                 "debug_counterpart_row": "Matched row",
@@ -258,6 +326,17 @@ class PairDialog(QDialog):
             },
             "zh": {
                 "status_label": "状态",
+                "match_type_label": "匹配类型",
+                "group_id_label": "组编号",
+                "group_shape_label": "组结构",
+                "group_total_current": "当前侧合计",
+                "group_total_counterpart": "对侧合计",
+                "group_diff": "差额",
+                "group_summary": "组合交易摘要",
+                "group_rows": "行数",
+                "group_total": "总金额",
+                "group_row": "行",
+                "group_amount": "金额",
                 "debug_confidence": "置信度",
                 "debug_current_row": "当前行",
                 "debug_counterpart_row": "对应行",
@@ -397,6 +476,9 @@ class MainWindow(QMainWindow):
         self._selected_system_path = ""
         self._selected_bank_path = ""
         self.current_result: ReconciliationResult | None = None
+        self._initial_compact_size_applied = False
+        self._expanded_window_size = QSize(1520, 980)
+        self._compact_window_size = QSize(0, 0)
         self._scan_thread: QThread | None = None
         self._scan_worker: ScanWorker | None = None
         self.system_model: TransactionsTableModel | None = None
@@ -405,16 +487,20 @@ class MainWindow(QMainWindow):
         self.bank_proxy: TransactionsFilterProxyModel | None = None
         self._active_grid_mode = "bank"
         self._date_filter_active = False
+        self._filter_overlay_active = False
+        self._filter_apply_scheduled = False
+        self._compact_window_mode = False
         self._build_ui()
         self._apply_styles()
         self._refresh_history()
         self._update_locked_state(True)
         self._apply_language()
+        QTimer.singleShot(0, self._show_startup_page)
         logger.info("Đã khởi tạo MainWindow.")
 
     def _build_ui(self) -> None:
         self.setWindowTitle("BSR v1.0")
-        self.resize(1520, 980)
+        self.resize(self._expanded_window_size)
 
         central = QWidget(self)
         self.setCentralWidget(central)
@@ -422,12 +508,31 @@ class MainWindow(QMainWindow):
         central_layout.setContentsMargins(0, 0, 0, 0)
         central_layout.setSpacing(0)
 
-        self.scroll_area = QScrollArea(central)
+        self.page_stack = QStackedWidget(central)
+        self.page_stack.setObjectName("mainPageStack")
+        central_layout.addWidget(self.page_stack)
+
+        self.startup_page = QWidget()
+        self.startup_page.setObjectName("startupPage")
+        self.startup_layout = QVBoxLayout(self.startup_page)
+        self.startup_layout.setContentsMargins(18, 18, 18, 18)
+        self.startup_layout.setSpacing(0)
+        self.startup_layout.setAlignment(Qt.AlignTop | Qt.AlignLeft)
+        self.page_stack.addWidget(self.startup_page)
+
+        self.results_page = QWidget()
+        self.results_page.setObjectName("resultsPage")
+        self.results_page_layout = QVBoxLayout(self.results_page)
+        self.results_page_layout.setContentsMargins(0, 0, 0, 0)
+        self.results_page_layout.setSpacing(0)
+        self.page_stack.addWidget(self.results_page)
+
+        self.scroll_area = QScrollArea(self.results_page)
         self.scroll_area.setWidgetResizable(True)
         self.scroll_area.setFrameShape(QFrame.NoFrame)
         self.scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.scroll_area.setAlignment(Qt.AlignTop | Qt.AlignLeft)
-        central_layout.addWidget(self.scroll_area)
+        self.results_page_layout.addWidget(self.scroll_area)
 
         self.scroll_content = QWidget()
         self.scroll_area.setWidget(self.scroll_content)
@@ -524,6 +629,7 @@ class MainWindow(QMainWindow):
         controls_row.addStretch(1)
         controls_row.addWidget(self.scan_button)
         file_layout.addLayout(controls_row, 2, 1, 1, 2)
+        self.startup_layout.addWidget(self.file_card, 0, Qt.AlignTop | Qt.AlignLeft)
 
         self.history_table = QTableWidget(0, 4)
         self.history_table.verticalHeader().hide()
@@ -548,8 +654,7 @@ class MainWindow(QMainWindow):
             self.metadata_grid.setColumnStretch(column, 1)
         metadata_layout.addLayout(self.metadata_grid)
 
-        self.top_layout.addWidget(self.file_card, 3, Qt.AlignTop)
-        self.top_layout.addWidget(self.metadata_card, 7, Qt.AlignTop)
+        self.top_layout.addWidget(self.metadata_card, 1, Qt.AlignTop)
 
         self.metric_titles: dict[str, QLabel] = {}
         self.metric_values: dict[str, QLabel] = {}
@@ -678,11 +783,11 @@ class MainWindow(QMainWindow):
         self.status_group = QButtonGroup(self)
         self.status_group.setExclusive(True)
         self.status_buttons: dict[str, QPushButton] = {}
-        for mode in ("all", "matched", "review", "unmatched"):
+        for mode in ("all", "matched_exact", "matched_group", "review", "unmatched"):
             button = QPushButton()
             button.setCheckable(True)
             button.setMinimumHeight(36)
-            button.clicked.connect(self._apply_filters)
+            button.clicked.connect(lambda _checked=False: self._schedule_filters(with_loading=True))
             self.status_group.addButton(button)
             self.status_buttons[mode] = button
             status_group_layout.addWidget(button)
@@ -691,6 +796,7 @@ class MainWindow(QMainWindow):
 
         self.flow_filter_group = QFrame()
         self.flow_filter_group.setObjectName("filterGroup")
+        self.flow_filter_group.setMinimumHeight(54)
         flow_group_layout = QHBoxLayout(self.flow_filter_group)
         flow_group_layout.setContentsMargins(10, 8, 10, 8)
         flow_group_layout.setSpacing(8)
@@ -705,29 +811,26 @@ class MainWindow(QMainWindow):
             button = QPushButton()
             button.setCheckable(True)
             button.setMinimumHeight(36)
-            button.clicked.connect(self._apply_filters)
+            button.clicked.connect(lambda _checked=False: self._schedule_filters(with_loading=True))
             self.flow_group.addButton(button)
             self.flow_buttons[mode] = button
             flow_group_layout.addWidget(button)
         self.flow_buttons["all"].setChecked(True)
         self.toolbar_groups_layout.addWidget(self.flow_filter_group)
-        self.toolbar_groups_layout.addStretch(1)
 
         self.filter_controls_layout = QBoxLayout(QBoxLayout.LeftToRight)
         self.filter_controls_layout.setSpacing(14)
         results_layout.addLayout(self.filter_controls_layout)
         self.date_filter_label = QLabel()
         self.date_filter_label.setObjectName("filterLabel")
-        self.date_from_label = QLabel()
-        self.date_from_label.setObjectName("filterLabel")
-        self.date_to_label = QLabel()
-        self.date_to_label.setObjectName("filterLabel")
+        self.date_range_separator = QLabel("~")
+        self.date_range_separator.setObjectName("filterLabel")
         self.date_from_edit = PopupDateEdit()
         self.date_to_edit = PopupDateEdit()
         self.reference_filter_combo = StyledComboBox()
         self.reference_filter_combo.setMinimumWidth(220)
         self.reference_filter_combo.setMinimumHeight(36)
-        self.reference_filter_combo.currentIndexChanged.connect(self._apply_filters)
+        self.reference_filter_combo.currentIndexChanged.connect(lambda _index: self._schedule_filters(with_loading=True))
         self.date_clear_button = QPushButton()
         self.date_clear_button.setMinimumHeight(36)
         self.date_clear_button.setFixedWidth(116)
@@ -757,9 +860,8 @@ class MainWindow(QMainWindow):
         date_group_layout.setContentsMargins(10, 8, 10, 8)
         date_group_layout.setSpacing(8)
         date_group_layout.addWidget(self.date_filter_label)
-        date_group_layout.addWidget(self.date_from_label)
         date_group_layout.addWidget(self.date_from_edit)
-        date_group_layout.addWidget(self.date_to_label)
+        date_group_layout.addWidget(self.date_range_separator)
         date_group_layout.addWidget(self.date_to_edit)
         date_group_layout.addWidget(self.date_clear_button)
 
@@ -779,36 +881,59 @@ class MainWindow(QMainWindow):
         results_layout.addLayout(self.summary_row_layout)
         self.summary_group = QFrame()
         self.summary_group.setObjectName("summaryGroup")
-        self.summary_group.setMinimumWidth(460)
-        self.summary_group.setMaximumWidth(460)
+        self.summary_group.setMinimumWidth(0)
+        self.summary_group.setMinimumHeight(54)
+        self.summary_group.setMaximumWidth(16777215)
+        self.summary_group.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         summary_group_layout = QHBoxLayout(self.summary_group)
-        summary_group_layout.setContentsMargins(12, 8, 12, 8)
+        summary_group_layout.setContentsMargins(10, 8, 10, 8)
         summary_group_layout.setSpacing(8)
         self.summary_grid_label = QLabel()
         self.summary_grid_label.setObjectName("summaryGridLabel")
         summary_group_layout.addWidget(self.summary_grid_label)
-        self.summary_chip_matched = QLabel()
-        self.summary_chip_matched.setObjectName("summaryChipMatched")
-        self.summary_chip_matched.setAlignment(Qt.AlignCenter)
-        summary_group_layout.addWidget(self.summary_chip_matched)
-        self.summary_chip_review = QLabel()
-        self.summary_chip_review.setObjectName("summaryChipReview")
-        self.summary_chip_review.setAlignment(Qt.AlignCenter)
-        summary_group_layout.addWidget(self.summary_chip_review)
-        self.summary_chip_unmatched = QLabel()
-        self.summary_chip_unmatched.setObjectName("summaryChipUnmatched")
-        self.summary_chip_unmatched.setAlignment(Qt.AlignCenter)
-        summary_group_layout.addWidget(self.summary_chip_unmatched)
+        self.summary_buttons_widget = QWidget(self.summary_group)
+        self.summary_buttons_widget.setObjectName("summaryButtons")
+        self.summary_buttons_widget.setMinimumHeight(36)
+        self.summary_buttons_widget.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Fixed)
+        self.summary_buttons_layout = QGridLayout(self.summary_buttons_widget)
+        self.summary_buttons_layout.setContentsMargins(0, 0, 0, 0)
+        self.summary_buttons_layout.setHorizontalSpacing(8)
+        self.summary_buttons_layout.setVerticalSpacing(6)
+        self.summary_filter_group = QButtonGroup(self)
+        self.summary_filter_group.setExclusive(True)
+        self.summary_filter_buttons: dict[str, QPushButton] = {}
+        summary_button_specs = (
+            ("all", "summaryChipAll"),
+            ("matched_exact", "summaryChipExact"),
+            ("matched_group", "summaryChipGroup"),
+            ("review", "summaryChipReview"),
+            ("unmatched", "summaryChipUnmatched"),
+        )
+        for mode, object_name in summary_button_specs:
+            button = QPushButton()
+            button.setObjectName(object_name)
+            button.setCheckable(True)
+            button.setAutoDefault(False)
+            button.setDefault(False)
+            button.setFixedHeight(36)
+            button.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Fixed)
+            button.setFocusPolicy(Qt.NoFocus)
+            button.clicked.connect(lambda _checked=False: self._schedule_filters(with_loading=True))
+            self.summary_filter_group.addButton(button)
+            self.summary_filter_buttons[mode] = button
+        self.summary_filter_buttons["all"].setChecked(True)
         self.summary_help_button = InstantToolTipButton()
         self.summary_help_button.setObjectName("summaryHelpButton")
         self.summary_help_button.setText("!")
         self.summary_help_button.setCursor(Qt.PointingHandCursor)
         self.summary_help_button.setAutoRaise(True)
-        summary_group_layout.addWidget(self.summary_help_button)
-        summary_group_layout.addStretch(1)
-        self.summary_row_layout.addWidget(self.summary_group, 1)
+        summary_group_layout.addWidget(self.summary_buttons_widget, 1)
+        self._reflow_summary_buttons()
+        self.toolbar_groups_layout.insertWidget(0, self.summary_group, 3)
+        self.toolbar_groups_layout.addStretch(1)
         self.summary_actions = QFrame()
         self.summary_actions.setObjectName("summaryActions")
+        self.summary_actions.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         summary_actions_layout = QHBoxLayout(self.summary_actions)
         summary_actions_layout.setContentsMargins(10, 6, 10, 6)
         summary_actions_layout.setSpacing(10)
@@ -828,20 +953,26 @@ class MainWindow(QMainWindow):
         results_layout.addWidget(self.locked_label)
 
         self.results_content = QWidget()
+        self.results_content.setObjectName("resultsContent")
         content_layout = QVBoxLayout(self.results_content)
         content_layout.setContentsMargins(0, 0, 0, 0)
         content_layout.setSpacing(0)
         self.grid_stack = QStackedWidget(self.results_content)
+        self.grid_stack.setObjectName("gridStack")
         self.grid_stack.setMinimumHeight(360)
-        content_layout.addWidget(self.grid_stack)
+        self.grid_stack.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Fixed)
+        content_layout.addWidget(self.grid_stack, 0, Qt.AlignTop)
+        content_layout.addStretch(1)
         results_layout.addWidget(self.results_content)
         root.addWidget(self.results_card)
 
         self.system_grid = self._create_grid_panel()
         self.bank_grid = self._create_grid_panel()
-        self.grid_stack.addWidget(self.system_grid.container)
-        self.grid_stack.addWidget(self.bank_grid.container)
-        self.grid_stack.setCurrentWidget(self.bank_grid.container)
+        self.system_page = self._wrap_grid_panel(self.system_grid.container)
+        self.bank_page = self._wrap_grid_panel(self.bank_grid.container)
+        self.grid_stack.addWidget(self.system_page)
+        self.grid_stack.addWidget(self.bank_page)
+        self.grid_stack.setCurrentWidget(self.bank_page)
 
         self.system_grid.table.action_requested.connect(lambda row: self._open_pair("system", row))
         self.bank_grid.table.action_requested.connect(lambda row: self._open_pair("bank", row))
@@ -854,7 +985,8 @@ class MainWindow(QMainWindow):
 
         self.overlay = LoadingOverlay(central)
         self.overlay.bind_parent()
-        self.overlay.set_blur_targets([self.scroll_area])
+        self.overlay.set_blur_targets([self.page_stack])
+        self.page_stack.setCurrentWidget(self.startup_page)
         self._apply_responsive_layouts()
 
     def _create_grid_panel(self) -> GridWidgets:
@@ -893,6 +1025,16 @@ class MainWindow(QMainWindow):
         layout.addLayout(filter_row)
         layout.addWidget(table)
         return GridWidgets(title_label, count_label, search_edit, columns_combo, table, container)
+
+    def _wrap_grid_panel(self, panel: QWidget) -> QWidget:
+        page = QWidget()
+        page.setObjectName("gridPage")
+        layout = QVBoxLayout(page)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
+        layout.addWidget(panel, 0, Qt.AlignTop)
+        layout.addStretch(1)
+        return page
 
     def _create_metric_widget(self) -> tuple[QWidget, QLabel, QLabel]:
         frame = QFrame()
@@ -963,16 +1105,55 @@ class MainWindow(QMainWindow):
         self.grid_stack.setMinimumHeight(active_height)
         self.grid_stack.setMaximumHeight(active_height)
 
+    def _reflow_summary_buttons(self) -> None:
+        while self.summary_buttons_layout.count():
+            item = self.summary_buttons_layout.takeAt(0)
+            widget = item.widget()
+            if widget is not None:
+                self.summary_buttons_layout.removeWidget(widget)
+
+        width = self.width()
+        if width < 900:
+            columns = 2
+        elif width < 1250:
+            columns = 3
+        else:
+            columns = 6
+
+        ordered_widgets = [
+            self.summary_filter_buttons["all"],
+            self.summary_filter_buttons["matched_exact"],
+            self.summary_filter_buttons["matched_group"],
+            self.summary_filter_buttons["review"],
+            self.summary_filter_buttons["unmatched"],
+            self.summary_help_button,
+        ]
+        for index, widget in enumerate(ordered_widgets):
+            row = index // columns
+            column = index % columns
+            self.summary_buttons_layout.addWidget(widget, row, column)
+        for column in range(columns):
+            self.summary_buttons_layout.setColumnStretch(column, 0)
+        self.summary_buttons_layout.setColumnStretch(columns, 1)
+
     def _apply_responsive_layouts(self) -> None:
         width = self.width()
+        if self.page_stack.currentWidget() is self.startup_page:
+            self.file_card.setMaximumWidth(450)
+            self.file_card.setMinimumWidth(0)
+            self.system_path_edit.setMaximumWidth(200)
+            self.bank_path_edit.setMaximumWidth(200)
+            return
+
         if width < 1180:
             self.root_layout.setContentsMargins(12, 12, 12, 12)
         else:
             self.root_layout.setContentsMargins(18, 18, 18, 18)
+        self.root_layout.setSpacing(14)
 
-        top_vertical = width < 1400
-        self.top_layout.setDirection(QBoxLayout.TopToBottom if top_vertical else QBoxLayout.LeftToRight)
-        self.file_card.setMaximumWidth(16777215 if top_vertical else 500)
+        self.top_layout.setDirection(QBoxLayout.LeftToRight)
+        self.system_path_edit.setMaximumWidth(16777215)
+        self.bank_path_edit.setMaximumWidth(16777215)
 
         if width < 860:
             self._apply_metadata_layout("compact")
@@ -984,15 +1165,22 @@ class MainWindow(QMainWindow):
             self._apply_metadata_layout("wide")
 
         self.summary_row_layout.setDirection(QBoxLayout.TopToBottom if width < 1120 else QBoxLayout.LeftToRight)
-        if width < 1120:
-            self.summary_group.setMinimumWidth(0)
-            self.summary_group.setMaximumWidth(16777215)
-        else:
-            self.summary_group.setMinimumWidth(460)
-            self.summary_group.setMaximumWidth(460)
+        self.summary_group.setMinimumWidth(0)
+        self.summary_group.setMaximumWidth(16777215)
         self.toolbar_groups_layout.setDirection(QBoxLayout.TopToBottom if width < 1320 else QBoxLayout.LeftToRight)
         self.filter_controls_layout.setDirection(QBoxLayout.TopToBottom if width < 1320 else QBoxLayout.LeftToRight)
+        self._reflow_summary_buttons()
         self._update_grid_heights()
+
+    def _show_startup_page(self) -> None:
+        self._initial_compact_size_applied = False
+        self.page_stack.setCurrentWidget(self.startup_page)
+        self._apply_initial_compact_size()
+
+    def _show_results_page(self) -> None:
+        self.page_stack.setCurrentWidget(self.results_page)
+        self._apply_responsive_layouts()
+        self._ensure_results_window_size()
 
     def resizeEvent(self, event) -> None:
         super().resizeEvent(event)
@@ -1002,7 +1190,7 @@ class MainWindow(QMainWindow):
         self.setStyleSheet(
             """
             QWidget {
-                background: #f5f7fb;
+                background: #eef3f9;
                 color: #18212f;
                 font-family: "Segoe UI", "Microsoft YaHei UI";
                 font-size: 13px;
@@ -1010,9 +1198,36 @@ class MainWindow(QMainWindow):
             QMainWindow {
                 background: #eef3f9;
             }
+            QLabel,
+            QCheckBox {
+                background: transparent;
+            }
+            QCheckBox {
+                spacing: 6px;
+            }
+            QCheckBox::indicator {
+                width: 16px;
+                height: 16px;
+                border: 1px solid #94a3b8;
+                border-radius: 4px;
+                background: #ffffff;
+            }
+            QCheckBox::indicator:hover {
+                border-color: #60a5fa;
+            }
+            QCheckBox::indicator:checked {
+                border-color: #3b82f6;
+                background: #dbeafe;
+            }
             QScrollArea {
                 border: none;
                 background: #eef3f9;
+            }
+            QWidget#resultsContent,
+            QWidget#gridPage,
+            QStackedWidget#gridStack {
+                background: transparent;
+                border: none;
             }
             QScrollBar:vertical {
                 background: transparent;
@@ -1078,22 +1293,22 @@ class MainWindow(QMainWindow):
                 background: rgba(107, 114, 128, 132);
             }
             QFrame#card, QFrame#resultsCard, QFrame#panelCard, QFrame#metricCard {
-                background: white;
+                background: #ffffff;
                 border: 1px solid #dbe4f0;
                 border-radius: 16px;
             }
             QFrame#loadingCard {
-                background: white;
+                background: #ffffff;
                 border: 1px solid #d1d5db;
                 border-radius: 18px;
             }
             QFrame#filterGroup {
-                background: #f8fbff;
+                background: #f7faff;
                 border: 1px solid #dbe4f0;
                 border-radius: 12px;
             }
             QFrame#summaryActions {
-                background: #f8fbff;
+                background: #f7faff;
                 border: 1px solid #dbe4f0;
                 border-radius: 12px;
             }
@@ -1121,9 +1336,13 @@ class MainWindow(QMainWindow):
                 color: #1f2937;
             }
             QFrame#summaryGroup {
-                background: #f8fbff;
+                background: #f7faff;
                 border: 1px solid #dbe4f0;
                 border-radius: 12px;
+            }
+            QWidget#summaryButtons {
+                background: transparent;
+                border: none;
             }
             QLabel#summaryGridLabel {
                 font-size: 12px;
@@ -1131,29 +1350,66 @@ class MainWindow(QMainWindow):
                 color: #0f172a;
                 padding-right: 2px;
             }
-            QLabel#summaryChipMatched,
-            QLabel#summaryChipReview,
-            QLabel#summaryChipUnmatched {
+            QPushButton#summaryChipAll,
+            QPushButton#summaryChipExact,
+            QPushButton#summaryChipGroup,
+            QPushButton#summaryChipReview,
+            QPushButton#summaryChipUnmatched {
                 font-size: 11px;
                 font-weight: 700;
-                min-height: 24px;
-                border-radius: 12px;
-                padding: 2px 12px;
+                min-height: 0px;
+                max-height: 36px;
+                min-width: 72px;
+                border-radius: 14px;
+                padding: 0 12px;
+                border-width: 1px;
+                border-style: solid;
             }
-            QLabel#summaryChipMatched {
+            QPushButton#summaryChipAll {
+                background: #eff4fb;
+                border-color: #d7e1ef;
+                color: #475569;
+            }
+            QPushButton#summaryChipExact {
                 background: #dcfce7;
-                border: 1px solid #bbf7d0;
+                border-color: #bbf7d0;
                 color: #166534;
             }
-            QLabel#summaryChipReview {
+            QPushButton#summaryChipGroup {
+                background: #dbeafe;
+                border-color: #bfdbfe;
+                color: #1d4ed8;
+            }
+            QPushButton#summaryChipReview {
                 background: #fef3c7;
-                border: 1px solid #fde68a;
+                border-color: #fde68a;
                 color: #92400e;
             }
-            QLabel#summaryChipUnmatched {
+            QPushButton#summaryChipUnmatched {
                 background: #fecdd3;
-                border: 1px solid #fda4af;
+                border-color: #fda4af;
                 color: #be123c;
+            }
+            QPushButton#summaryChipAll:checked,
+            QPushButton#summaryChipExact:checked,
+            QPushButton#summaryChipGroup:checked,
+            QPushButton#summaryChipReview:checked,
+            QPushButton#summaryChipUnmatched:checked {
+                border-color: #3b82f6;
+            }
+            QPushButton#summaryChipAll:hover,
+            QPushButton#summaryChipExact:hover,
+            QPushButton#summaryChipGroup:hover,
+            QPushButton#summaryChipReview:hover,
+            QPushButton#summaryChipUnmatched:hover {
+                border-color: #60a5fa;
+            }
+            QPushButton#summaryChipAll:focus,
+            QPushButton#summaryChipExact:focus,
+            QPushButton#summaryChipGroup:focus,
+            QPushButton#summaryChipReview:focus,
+            QPushButton#summaryChipUnmatched:focus {
+                outline: none;
             }
             QFrame#resultsCard QLabel#sectionTitle,
             QFrame#panelCard QLabel#sectionTitle {
@@ -1165,9 +1421,11 @@ class MainWindow(QMainWindow):
             QFrame#resultsCard QLabel#summaryGridLabel {
                 font-size: 12px;
             }
-            QFrame#resultsCard QLabel#summaryChipMatched,
-            QFrame#resultsCard QLabel#summaryChipReview,
-            QFrame#resultsCard QLabel#summaryChipUnmatched {
+            QFrame#resultsCard QPushButton#summaryChipAll,
+            QFrame#resultsCard QPushButton#summaryChipExact,
+            QFrame#resultsCard QPushButton#summaryChipGroup,
+            QFrame#resultsCard QPushButton#summaryChipReview,
+            QFrame#resultsCard QPushButton#summaryChipUnmatched {
                 font-size: 11px;
             }
             QFrame#resultsCard QLabel#countLabel,
@@ -1202,7 +1460,7 @@ class MainWindow(QMainWindow):
                 color: #111827;
             }
             QLineEdit, QComboBox, QDateEdit, QTableWidget, QTableView, QTextBrowser {
-                background: white;
+                background: #ffffff;
                 border: 1px solid #cbd5e1;
                 border-radius: 10px;
                 padding: 5px 10px;
@@ -1254,7 +1512,7 @@ class MainWindow(QMainWindow):
                 width: 32px;
                 border: none;
                 border-left: 1px solid #dbe4f0;
-                background: #f8fbff;
+                background: #f3f7fc;
                 border-top-right-radius: 10px;
                 border-bottom-right-radius: 10px;
             }
@@ -1270,7 +1528,7 @@ class MainWindow(QMainWindow):
             QComboBox QAbstractItemView {
                 border: 1px solid #cbd5e1;
                 border-radius: 10px;
-                background: white;
+                background: #ffffff;
                 selection-background-color: #dbeafe;
                 selection-color: #0f172a;
                 outline: 0;
@@ -1293,7 +1551,7 @@ class MainWindow(QMainWindow):
                 outline: none;
                 border: 1px solid #cbd5e1;
                 border-radius: 10px;
-                background: white;
+                background: #ffffff;
                 padding: 4px;
             }
             QFrame#comboPopupContainer {
@@ -1321,7 +1579,7 @@ class MainWindow(QMainWindow):
                 alternate-background-color: #f8fafc;
             }
             QCalendarWidget QTableView {
-                background: white;
+                background: #ffffff;
                 border: 1px solid #dbe4f0;
                 border-top: none;
                 border-bottom-left-radius: 10px;
@@ -1396,6 +1654,42 @@ class MainWindow(QMainWindow):
                 color: #94a3b8;
                 background: #e5e7eb;
             }
+            QPushButton#summaryChipAll,
+            QPushButton#summaryChipExact,
+            QPushButton#summaryChipGroup,
+            QPushButton#summaryChipReview,
+            QPushButton#summaryChipUnmatched {
+                border-width: 1px;
+                border-style: solid;
+                border-radius: 14px;
+                padding: 4px 12px;
+            }
+            QPushButton#summaryChipAll:checked,
+            QPushButton#summaryChipExact:checked,
+            QPushButton#summaryChipGroup:checked,
+            QPushButton#summaryChipReview:checked,
+            QPushButton#summaryChipUnmatched:checked,
+            QPushButton#summaryChipAll:pressed,
+            QPushButton#summaryChipExact:pressed,
+            QPushButton#summaryChipGroup:pressed,
+            QPushButton#summaryChipReview:pressed,
+            QPushButton#summaryChipUnmatched:pressed,
+            QPushButton#summaryChipAll:checked:hover,
+            QPushButton#summaryChipExact:checked:hover,
+            QPushButton#summaryChipGroup:checked:hover,
+            QPushButton#summaryChipReview:checked:hover,
+            QPushButton#summaryChipUnmatched:checked:hover {
+                border: 1px solid #3b82f6;
+            }
+            QPushButton#summaryChipAll:focus,
+            QPushButton#summaryChipExact:focus,
+            QPushButton#summaryChipGroup:focus,
+            QPushButton#summaryChipReview:focus,
+            QPushButton#summaryChipUnmatched:focus {
+                border-width: 1px;
+                border-style: solid;
+                outline: none;
+            }
             QToolButton {
                 background: transparent;
                 border: none;
@@ -1432,11 +1726,18 @@ class MainWindow(QMainWindow):
                 padding: 8px 10px;
             }
             QHeaderView::section {
-                background: #eaf0f8;
+                background: #e8f0fa;
                 border: none;
                 border-bottom: 1px solid #dbe4f0;
+                border-right: 1px solid #d5dfec;
                 padding: 8px;
                 font-weight: 700;
+            }
+            QTableCornerButton::section {
+                background: #e8f0fa;
+                border: none;
+                border-bottom: 1px solid #dbe4f0;
+                border-right: 1px solid #d5dfec;
             }
             QFrame#resultsCard QHeaderView::section,
             QFrame#panelCard QHeaderView::section {
@@ -1444,10 +1745,13 @@ class MainWindow(QMainWindow):
                 padding: 6px 7px;
             }
             QTableView {
+                background: #ffffff;
                 gridline-color: #e5e7eb;
                 selection-background-color: #bfdbfe;
                 selection-color: #18212f;
                 alternate-background-color: #f8fafc;
+                border: none;
+                outline: 0;
             }
             QFrame#resultsCard QTableView,
             QFrame#panelCard QTableView {
@@ -1485,8 +1789,7 @@ class MainWindow(QMainWindow):
         self.history_button.setText(tr(self.current_language, "history_button"))
         self.reference_filter_label.setText(tr(self.current_language, "reference_filter"))
         self.date_filter_label.setText(self._date_filter_text("caption"))
-        self.date_from_label.setText(self._date_filter_text("from"))
-        self.date_to_label.setText(self._date_filter_text("to"))
+        self.date_range_separator.setText("~")
         self.system_choose_button.setText(tr(self.current_language, "choose_file"))
         self.bank_choose_button.setText(tr(self.current_language, "choose_file"))
         self.scan_button.setText(tr(self.current_language, "scan"))
@@ -1501,7 +1804,8 @@ class MainWindow(QMainWindow):
         self.flow_group_label.setText(tr(self.current_language, "flow_filter_title"))
         self._update_grid_toggle_button()
         self.status_buttons["all"].setText(tr(self.current_language, "status_all"))
-        self.status_buttons["matched"].setText(tr(self.current_language, "status_matched"))
+        self.status_buttons["matched_exact"].setText(tr(self.current_language, "status_matched_exact"))
+        self.status_buttons["matched_group"].setText(tr(self.current_language, "status_matched_group"))
         self.status_buttons["review"].setText(tr(self.current_language, "status_review"))
         self.status_buttons["unmatched"].setText(tr(self.current_language, "status_unmatched"))
         self.flow_buttons["all"].setText(tr(self.current_language, "flow_all"))
@@ -1532,21 +1836,24 @@ class MainWindow(QMainWindow):
         texts = {
             "vi": (
                 "<b>Giải thích trạng thái</b><br>"
-                "Khớp: giao dịch đã dò được cặp tương ứng.<br>"
-                "Cần kiểm tra: tool tìm thấy cặp gần đúng, nên kiểm tra tay lại.<br>"
-                "Không khớp: chưa tìm thấy giao dịch tương ứng."
+                "Khớp lẻ: 1 giao dịch hệ thống khớp 1 giao dịch sao kê.<br>"
+                "Phí/VAT đã khớp: chỉ áp dụng cho các dòng phí/VAT từ sao kê được gom về 1 dòng hệ thống.<br>"
+                "Cần kiểm tra: tool có ứng viên hợp lý nhưng chưa đủ an toàn để chốt.<br>"
+                "Chưa khớp: chưa tìm được đối ứng phù hợp, hoặc thuộc ca n-n không tự ghép."
             ),
             "en": (
                 "<b>Status meaning</b><br>"
-                "Matched: a counterpart transaction was found.<br>"
-                "Needs review: a likely pair was found and should be checked manually.<br>"
-                "Unmatched: no counterpart transaction was found."
+                "Exact matched: one system row matches one statement row.<br>"
+                "Fee/VAT matched: statement fee/VAT rows that were merged into one system row.<br>"
+                "Needs review: the tool found a plausible candidate but not enough proof.<br>"
+                "Unmatched: no safe counterpart was found, including n-n cases."
             ),
             "zh": (
                 "<b>状态说明</b><br>"
-                "已匹配：已找到对应交易。<br>"
-                "需要复核：找到接近的对应交易，建议人工再核对。<br>"
-                "未匹配：尚未找到对应交易。"
+                "单笔已匹配：系统与流水 1 对 1 对应。<br>"
+                "费用/VAT 已匹配：仅显示流水费用/VAT 汇总到 1 条系统记录的情况。<br>"
+                "需要复核：存在合理候选，但证据不足。<br>"
+                "未匹配：尚未找到安全的对应交易，n-n 默认也归入此类。"
             ),
         }
         return texts.get(self.current_language, texts["vi"])
@@ -1587,14 +1894,55 @@ class MainWindow(QMainWindow):
         self._apply_language()
         logger.info("Đã đổi ngôn ngữ giao diện sang %s", self.current_language)
 
+    def _apply_initial_compact_size(self) -> None:
+        if self._initial_compact_size_applied or self.current_result is not None:
+            return
+        self.startup_layout.setContentsMargins(18, 18, 18, 18)
+        self.startup_layout.setSpacing(0)
+        self.file_card.setMaximumWidth(450)
+        self.file_card.setMinimumWidth(0)
+        self.system_path_edit.setMaximumWidth(200)
+        self.bank_path_edit.setMaximumWidth(200)
+        self.file_card.updateGeometry()
+        self.startup_page.adjustSize()
+        self.page_stack.adjustSize()
+        self.adjustSize()
+        target_size = self.startup_page.sizeHint()
+        self._set_compact_window_mode(True)
+        self.setFixedSize(target_size)
+        self._initial_compact_size_applied = True
+
+    def _ensure_results_window_size(self) -> None:
+        self._set_compact_window_mode(False)
+        self.setMinimumSize(0, 0)
+        self.setMaximumSize(16777215, 16777215)
+        self.system_path_edit.setMaximumWidth(16777215)
+        self.bank_path_edit.setMaximumWidth(16777215)
+        if self.width() < self._expanded_window_size.width() or self.height() < self._expanded_window_size.height():
+            self.resize(self._expanded_window_size)
+
+    def _set_compact_window_mode(self, enabled: bool) -> None:
+        if self._compact_window_mode == enabled:
+            return
+        self._compact_window_mode = enabled
+        was_visible = self.isVisible()
+        position = self.pos()
+        self.setWindowFlag(Qt.WindowMaximizeButtonHint, not enabled)
+        if was_visible:
+            if not enabled:
+                self.showNormal()
+            self.show()
+            self.move(position)
+
     def _update_locked_state(self, locked: bool) -> None:
         has_result = self.current_result is not None
+        self.top_section.setVisible(has_result)
         self.metadata_card.setVisible(has_result)
         self.results_card.setVisible(has_result)
         self.results_content.setEnabled(not locked)
         self.results_content.setVisible(has_result)
         self.locked_label.setVisible(False)
-        self.status_filter_group.setVisible(has_result)
+        self.status_filter_group.setVisible(False)
         self.flow_filter_group.setVisible(has_result)
         self.reference_filter_group.setVisible(has_result)
         self.date_filter_group.setVisible(has_result)
@@ -1615,6 +1963,8 @@ class MainWindow(QMainWindow):
         self.date_to_edit.setEnabled(not locked and has_result)
         self.date_clear_button.setEnabled(not locked and has_result)
         for button in self.status_buttons.values():
+            button.setEnabled(not locked)
+        for button in self.summary_filter_buttons.values():
             button.setEnabled(not locked)
         for button in self.flow_buttons.values():
             button.setEnabled(not locked)
@@ -1768,6 +2118,8 @@ class MainWindow(QMainWindow):
             system_path,
             bank_path,
         )
+        self._update_locked_state(True)
+        self._show_results_page()
         self.overlay.set_message("Loading")
         self.overlay.show()
         self.scan_button.setEnabled(False)
@@ -1791,6 +2143,7 @@ class MainWindow(QMainWindow):
         self._fill_metadata(result)
         self._refresh_history()
         self._update_locked_state(False)
+        self._show_results_page()
         self.overlay.hide()
         self.scan_button.setEnabled(True)
         logger.info(
@@ -1804,6 +2157,8 @@ class MainWindow(QMainWindow):
     def _scan_failed(self, message: str) -> None:
         self.overlay.hide()
         self.scan_button.setEnabled(True)
+        self._update_locked_state(True)
+        self._show_startup_page()
         logger.error("Dò thất bại trên giao diện: %s", message)
         QMessageBox.critical(
             self,
@@ -1908,8 +2263,11 @@ class MainWindow(QMainWindow):
 
     def _apply_filters(self) -> None:
         if not self.system_proxy or not self.bank_proxy:
+            if self._filter_overlay_active:
+                self.overlay.hide()
+                self._filter_overlay_active = False
             return
-        status_mode = next(mode for mode, button in self.status_buttons.items() if button.isChecked())
+        status_mode = self._current_status_mode()
         flow_mode = next(mode for mode, button in self.flow_buttons.items() if button.isChecked())
         reference_mode = self.reference_filter_combo.currentData() or "all"
         use_date_filter = self._date_filter_active and self.date_from_edit.isEnabled()
@@ -1932,6 +2290,25 @@ class MainWindow(QMainWindow):
             self.system_proxy.rowCount() if self.system_proxy else 0,
             self.bank_proxy.rowCount() if self.bank_proxy else 0,
         )
+        if self._filter_overlay_active:
+            self.overlay.hide()
+            self._filter_overlay_active = False
+
+    def _schedule_filters(self, *, with_loading: bool = False) -> None:
+        if self._filter_apply_scheduled:
+            self._filter_overlay_active = self._filter_overlay_active or with_loading
+            return
+        self._filter_apply_scheduled = True
+        if with_loading and self.current_result is not None:
+            self.overlay.set_message(self._filter_loading_text())
+            self.overlay.show()
+            self._filter_overlay_active = True
+            QApplication.processEvents()
+        QTimer.singleShot(0, self._run_scheduled_filters)
+
+    def _run_scheduled_filters(self) -> None:
+        self._filter_apply_scheduled = False
+        self._apply_filters()
 
     def _filter_system_grid(self) -> None:
         if not self.system_proxy:
@@ -1975,30 +2352,28 @@ class MainWindow(QMainWindow):
     def _update_summary(self) -> None:
         if not self.current_result:
             self.summary_grid_label.setText("")
-            self.summary_chip_matched.setText("")
-            self.summary_chip_review.setText("")
-            self.summary_chip_unmatched.setText("")
+            for button in self.summary_filter_buttons.values():
+                button.setText("")
             return
-        summary = self.current_result.summary
-        if self._active_grid_mode == "bank":
-            grid_label = tr(self.current_language, "bank_grid")
-            matched = summary.matched_bank
-            review = summary.review_bank
-            unmatched = summary.unmatched_bank
-        else:
-            grid_label = tr(self.current_language, "system_grid")
-            matched = summary.matched_system
-            review = summary.review_system
-            unmatched = summary.unmatched_system
-        labels = {
-            "vi": f"{grid_label}: {matched} khớp, {review} cần kiểm tra, {unmatched} không khớp",
-            "en": f"{grid_label}: {matched} matched, {review} review, {unmatched} unmatched",
-            "zh": f"{grid_label}：{matched} 已匹配，{review} 待复核，{unmatched} 未匹配",
-        }
+        proxy = self.bank_proxy if self._active_grid_mode == "bank" else self.system_proxy
+        grid_label = tr(self.current_language, "bank_grid") if self._active_grid_mode == "bank" else tr(self.current_language, "system_grid")
+        exact, group, review, unmatched = self._status_breakdown(proxy)
         self.summary_grid_label.setText(grid_label)
-        self.summary_chip_matched.setText(f"{matched} {tr(self.current_language, 'matched')}")
-        self.summary_chip_review.setText(f"{review} {tr(self.current_language, 'review')}")
-        self.summary_chip_unmatched.setText(f"{unmatched} {tr(self.current_language, 'unmatched')}")
+        self.summary_filter_buttons["all"].setText(tr(self.current_language, "status_all"))
+        self.summary_filter_buttons["matched_exact"].setText(f"{exact} {tr(self.current_language, 'matched_exact')}")
+        self.summary_filter_buttons["matched_group"].setText(f"{group} {tr(self.current_language, 'status_matched_group')}")
+        self.summary_filter_buttons["review"].setText(f"{review} {tr(self.current_language, 'review')}")
+        self.summary_filter_buttons["unmatched"].setText(f"{unmatched} {tr(self.current_language, 'unmatched')}")
+
+    def _status_breakdown(self, proxy) -> tuple[int, int, int, int]:
+        if proxy is None:
+            return 0, 0, 0, 0
+        return (
+            proxy.count_for_status_mode("matched_exact"),
+            proxy.count_for_status_mode("matched_group"),
+            proxy.count_for_status_mode("review"),
+            proxy.count_for_status_mode("unmatched"),
+        )
 
     def _update_row_counts(self) -> None:
         for grid, model, proxy in (
@@ -2075,34 +2450,72 @@ class MainWindow(QMainWindow):
             getattr(row, "excel_row", None),
             getattr(row, "status", None),
         )
+        if getattr(row, "match_type", "none") == "group" and getattr(row, "group_id", None):
+            system_rows, bank_rows = self._group_rows(row.group_id)
+            if source == "system" and not system_rows:
+                system_rows = [row]
+            if source == "bank" and not bank_rows:
+                bank_rows = [row]
+            if source == "system" and bank_rows:
+                self._focus_counterpart_rows(
+                    self.bank_model,
+                    self.bank_proxy,
+                    self.bank_grid.table,
+                    [bank_row.row_id for bank_row in bank_rows],
+                )
+            elif source == "bank" and system_rows:
+                self._focus_counterpart_rows(
+                    self.system_model,
+                    self.system_proxy,
+                    self.system_grid.table,
+                    [system_row.row_id for system_row in system_rows],
+                )
+            dialog = PairDialog(
+                self.current_language,
+                tr(self.current_language, "paired_system"),
+                self.current_result.system_headers,
+                system_rows,
+                tr(self.current_language, "paired_bank"),
+                self._bank_grid_headers(),
+                bank_rows,
+                self,
+            )
+            dialog.exec()
+            return
         if source == "system":
-            system_row = row
-            bank_row = self._bank_row_by_id(row.matched_bank_id) if row.matched_bank_id else None
-            if row.matched_bank_id:
-                self._set_active_grid_mode("bank")
-            self._focus_counterpart(self.bank_model, self.bank_proxy, self.bank_grid.table, row.matched_bank_id)
+            system_rows = [row]
+            bank_rows = self._review_or_matched_bank_rows(row)
+            self._focus_counterpart_rows(
+                self.bank_model,
+                self.bank_proxy,
+                self.bank_grid.table,
+                [bank_row.row_id for bank_row in bank_rows],
+            )
         else:
-            bank_row = row
-            system_row = self._system_row_by_id(row.matched_system_id) if row.matched_system_id else None
-            if row.matched_system_id:
-                self._set_active_grid_mode("system")
-            self._focus_counterpart(self.system_model, self.system_proxy, self.system_grid.table, row.matched_system_id)
+            bank_rows = [row]
+            system_rows = self._review_or_matched_system_rows(row)
+            self._focus_counterpart_rows(
+                self.system_model,
+                self.system_proxy,
+                self.system_grid.table,
+                [system_row.row_id for system_row in system_rows],
+            )
         dialog = PairDialog(
             self.current_language,
             tr(self.current_language, "paired_system"),
             self.current_result.system_headers,
-            system_row,
+            system_rows,
             tr(self.current_language, "paired_bank"),
             self._bank_grid_headers(),
-            bank_row,
+            bank_rows,
             self,
         )
         dialog.exec()
 
-    def _focus_counterpart(self, model, proxy, table: FrozenTableView, row_id: str | None) -> None:
-        if not model or not proxy or not row_id:
+    def _focus_counterpart_rows(self, model, proxy, table: FrozenTableView, row_ids: list[str]) -> None:
+        if not model or not proxy or not row_ids:
             return
-        source_row = model.row_index_by_id(row_id)
+        source_row = model.row_index_by_id(row_ids[0])
         if source_row is None:
             return
         target_column = 1 if model.columnCount() > 1 else 0
@@ -2123,6 +2536,35 @@ class MainWindow(QMainWindow):
             return None
         index = self.bank_model.row_index_by_id(row_id)
         return self.bank_model.row_object(index) if index is not None else None
+
+    def _review_or_matched_bank_rows(self, row) -> list[object]:
+        matched_row = self._bank_row_by_id(getattr(row, "matched_bank_id", None))
+        if matched_row is not None:
+            return [matched_row]
+        review_ids = list(getattr(row, "review_bank_ids", []) or [])
+        review_rows = [self._bank_row_by_id(row_id) for row_id in review_ids]
+        return [candidate for candidate in review_rows if candidate is not None]
+
+    def _review_or_matched_system_rows(self, row) -> list[object]:
+        matched_row = self._system_row_by_id(getattr(row, "matched_system_id", None))
+        if matched_row is not None:
+            return [matched_row]
+        review_ids = list(getattr(row, "review_system_ids", []) or [])
+        review_rows = [self._system_row_by_id(row_id) for row_id in review_ids]
+        return [candidate for candidate in review_rows if candidate is not None]
+
+    def _group_rows(self, group_id: str) -> tuple[list[object], list[object]]:
+        if self.current_result is None:
+            return [], []
+        system_rows = sorted(
+            [row for row in self.current_result.system_rows if getattr(row, "group_id", None) == group_id],
+            key=lambda row: (getattr(row, "group_order", 0), getattr(row, "excel_row", 0)),
+        )
+        bank_rows = sorted(
+            [row for row in self.current_result.bank_rows if getattr(row, "group_id", None) == group_id],
+            key=lambda row: (getattr(row, "group_order", 0), getattr(row, "excel_row", 0)),
+        )
+        return system_rows, bank_rows
 
     def _export_unmatched(self) -> None:
         if not self.current_result:
@@ -2221,13 +2663,21 @@ class MainWindow(QMainWindow):
         return "SaoKe_Xuat" if self._active_grid_mode == "bank" else "HeThong_Xuat"
 
     def _current_status_mode(self) -> str:
-        return next(mode for mode, button in self.status_buttons.items() if button.isChecked())
+        return next(mode for mode, button in self.summary_filter_buttons.items() if button.isChecked())
 
     def _export_button_label(self) -> str:
         labels = {
             "vi": "Xuất Excel",
             "en": "Export Excel",
             "zh": "导出 Excel",
+        }
+        return labels.get(self.current_language, labels["vi"])
+
+    def _filter_loading_text(self) -> str:
+        labels = {
+            "vi": "Đang lọc...",
+            "en": "Filtering...",
+            "zh": "正在筛选...",
         }
         return labels.get(self.current_language, labels["vi"])
 
@@ -2283,13 +2733,13 @@ class MainWindow(QMainWindow):
             return
         self._date_filter_active = False
         self._configure_date_filters(self.current_result)
-        self._apply_filters()
+        self._schedule_filters(with_loading=True)
 
     def _on_date_filter_changed(self) -> None:
         if self.current_result is None:
             return
         self._date_filter_active = True
-        self._apply_filters()
+        self._schedule_filters(with_loading=True)
 
     def _all_result_dates(self, result: ReconciliationResult) -> list[date]:
         values: list[date] = []
@@ -2332,6 +2782,7 @@ class MainWindow(QMainWindow):
         options = [
             ("all", "reference_all"),
             ("FT", "reference_ft"),
+            ("TT", "reference_tt"),
             ("ST", "reference_st"),
             ("SK", "reference_sk"),
             ("LD", "reference_ld"),
@@ -2349,7 +2800,7 @@ class MainWindow(QMainWindow):
 
     def _set_active_grid_mode(self, mode: str) -> None:
         self._active_grid_mode = "bank" if mode == "bank" else "system"
-        current_widget = self.bank_grid.container if self._active_grid_mode == "bank" else self.system_grid.container
+        current_widget = self.bank_page if self._active_grid_mode == "bank" else self.system_page
         self.grid_stack.setCurrentWidget(current_widget)
         self._update_grid_toggle_button()
         self._update_summary()

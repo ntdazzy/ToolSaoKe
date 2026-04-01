@@ -28,6 +28,8 @@ class FrozenTableView(QTableView):
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
+        self.setFrameShape(QFrame.NoFrame)
+        self.setLineWidth(0)
         self.setHorizontalScrollMode(QAbstractItemView.ScrollPerPixel)
         self.setVerticalScrollMode(QAbstractItemView.ScrollPerPixel)
         self.verticalHeader().hide()
