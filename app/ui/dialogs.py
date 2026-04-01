@@ -1,0 +1,384 @@
+from __future__ import annotations
+
+from html import escape
+from pathlib import Path
+
+from PySide6.QtCore import Qt
+from PySide6.QtGui import QIcon
+from PySide6.QtWidgets import (
+    QDialog,
+    QFrame,
+    QHBoxLayout,
+    QLabel,
+    QTableWidget,
+    QTableWidgetItem,
+    QTextBrowser,
+    QToolButton,
+    QVBoxLayout,
+    QWidget,
+)
+
+from app.i18n import tr
+from app.resource_utils import logo_image_path
+from app.services.utils import format_vnd
+from app.ui.table_models import status_bucket_for_row
+
+
+class PairDialog(QDialog):
+    def __init__(
+        self,
+        language: str,
+        system_title: str,
+        system_headers: list[str],
+        system_rows,
+        bank_title: str,
+        bank_headers: list[str],
+        bank_rows,
+        parent: QWidget | None = None,
+    ) -> None:
+        super().__init__(parent)
+        logo_path = logo_image_path()
+        if logo_path.exists():
+            self.setWindowIcon(QIcon(str(logo_path)))
+        self.language = language
+        self.system_rows = list(system_rows or [])
+        self.bank_rows = list(bank_rows or [])
+        self.setWindowTitle(tr(language, "open_pair_title"))
+        self.resize(960, 620)
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(18, 18, 18, 18)
+        layout.setSpacing(16)
+        layout.addWidget(self._build_panel(system_title, system_headers, self.system_rows, self.bank_rows), 1)
+        layout.addWidget(self._build_panel(bank_title, bank_headers, self.bank_rows, self.system_rows), 1)
+
+    def _build_panel(self, title: str, headers: list[str], rows: list[object], counterpart_rows: list[object]) -> QWidget:
+        panel = QFrame(self)
+        panel.setObjectName("card")
+        layout = QVBoxLayout(panel)
+        layout.setContentsMargins(16, 16, 16, 16)
+        layout.setSpacing(10)
+        title_label = QLabel(title)
+        title_label.setObjectName("sectionTitle")
+        browser = QTextBrowser(panel)
+        browser.setOpenExternalLinks(False)
+        browser.setHtml(self._build_details_html(headers, rows))
+        layout.addWidget(title_label)
+        layout.addWidget(browser, 1)
+
+        if rows:
+            toggle = QToolButton(panel)
+            toggle.setCheckable(True)
+            toggle.setChecked(False)
+            toggle.setArrowType(Qt.RightArrow)
+            toggle.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
+            toggle.setText(self._label("explain_show"))
+
+            explanation = QTextBrowser(panel)
+            explanation.setOpenExternalLinks(False)
+            explanation.setVisible(False)
+            explanation.setMaximumHeight(220)
+            explanation.setHtml(self._build_explanation_html(rows, counterpart_rows))
+
+            toggle.toggled.connect(
+                lambda checked, button=toggle, widget=explanation: self._toggle_explanation(button, widget, checked)
+            )
+            layout.addWidget(toggle, alignment=Qt.AlignLeft)
+            layout.addWidget(explanation)
+        return panel
+
+    def _build_details_html(self, headers: list[str], rows: list[object]) -> str:
+        if not rows:
+            return f"<p>{escape(tr(self.language, 'no_pair'))}</p>"
+        if len(rows) == 1:
+            details_rows = self._single_row_details(headers, rows[0])
+            return self._table_html(details_rows) if details_rows else f"<p>{escape(tr(self.language, 'no_pair'))}</p>"
+
+        html_sections = [
+            "<div style='margin-bottom:10px;padding:10px 12px;border:1px solid #dbe4f0;"
+            "border-radius:12px;background:#f8fbff'>"
+            f"<b>{escape(self._label('group_summary'))}</b><br>"
+            f"{escape(self._label('group_rows'))}: {len(rows)}<br>"
+            f"{escape(self._label('group_total'))}: {escape(format_vnd(sum(getattr(row, 'amount', 0) for row in rows)))}"
+            "</div>"
+        ]
+        for index, row in enumerate(rows, start=1):
+            details_rows = self._single_row_details(headers, row)
+            if not details_rows:
+                continue
+            html_sections.append(
+                "<div style='margin-bottom:14px'>"
+                f"<div style='margin-bottom:6px;font-weight:700;color:#0f172a'>{escape(self._row_heading(index, row))}</div>"
+                f"{self._table_html(details_rows)}"
+                "</div>"
+            )
+        if len(html_sections) == 1:
+            return f"<p>{escape(tr(self.language, 'no_pair'))}</p>"
+        return "".join(html_sections)
+
+    def _single_row_details(self, headers: list[str], row) -> list[str]:
+        rows: list[str] = []
+        for header, value in zip(headers, row.display_values, strict=False):
+            text = (value or "").strip()
+            if text:
+                rows.append(self._table_row(header, text))
+        return rows
+
+    def _build_explanation_html(self, current_rows: list[object], counterpart_rows: list[object]) -> str:
+        first_row = current_rows[0]
+        counterpart_first = counterpart_rows[0] if counterpart_rows else None
+        counterpart_row = (
+            getattr(first_row, "matched_bank_row", None)
+            or getattr(first_row, "matched_system_row", None)
+            or getattr(counterpart_first, "excel_row", None)
+        )
+        current_total = sum(getattr(row, "amount", 0) for row in current_rows)
+        counterpart_total = sum(getattr(row, "amount", 0) for row in counterpart_rows)
+        rows = [
+            self._table_row(self._label("status_label"), tr(self.language, status_bucket_for_row(first_row))),
+            self._table_row(self._label("match_type_label"), self._match_type_text(first_row)),
+            self._table_row(self._label("group_id_label"), getattr(first_row, "group_id", None) or self._label("debug_none")),
+            self._table_row(self._label("group_shape_label"), f"{len(current_rows)}-{len(counterpart_rows)}"),
+            self._table_row(self._label("group_total_current"), format_vnd(current_total)),
+            self._table_row(self._label("group_total_counterpart"), format_vnd(counterpart_total)),
+            self._table_row(self._label("group_diff"), format_vnd(current_total - counterpart_total)),
+            self._table_row(self._label("debug_confidence"), self._format_confidence(getattr(first_row, "confidence", 0))),
+            self._table_row(self._label("debug_current_row"), self._rows_label(current_rows)),
+            self._table_row(
+                self._label("debug_counterpart_row"),
+                self._rows_label(counterpart_rows) if counterpart_rows else (
+                    str(counterpart_row) if counterpart_row else self._label("debug_none")
+                ),
+            ),
+            self._table_row(self._label("debug_date_basis"), self._date_basis_label(getattr(first_row, "match_reason", ""))),
+            self._table_row(
+                self._label("debug_basis"),
+                self._format_match_basis(getattr(first_row, "match_reason", "")),
+                is_html=True,
+            ),
+        ]
+        return self._table_html(rows)
+
+    def _table_html(self, rows: list[str]) -> str:
+        return (
+            "<table width='100%' cellspacing='0' cellpadding='0' style='border-collapse:collapse;table-layout:fixed'>"
+            + "".join(rows)
+            + "</table>"
+        )
+
+    def _table_row(self, label: str, value: str, *, is_html: bool = False) -> str:
+        rendered = value if is_html else escape(value)
+        return (
+            "<tr>"
+            "<td style='width:34%;padding:8px 10px;font-weight:600;vertical-align:top;"
+            "background:#f8fafc;border-bottom:1px solid #e5e7eb;word-break:break-word'>"
+            f"{escape(label)}"
+            "</td>"
+            "<td style='padding:8px 10px;vertical-align:top;border-bottom:1px solid #e5e7eb;"
+            "white-space:pre-wrap;word-break:break-word'>"
+            f"{rendered}"
+            "</td>"
+            "</tr>"
+        )
+
+    def _toggle_explanation(self, button: QToolButton, widget: QTextBrowser, checked: bool) -> None:
+        widget.setVisible(checked)
+        button.setArrowType(Qt.DownArrow if checked else Qt.RightArrow)
+        button.setText(self._label("explain_hide") if checked else self._label("explain_show"))
+
+    def _rows_label(self, rows: list[object]) -> str:
+        if not rows:
+            return self._label("debug_none")
+        return ", ".join(str(getattr(row, "excel_row", "")) for row in rows if getattr(row, "excel_row", None))
+
+    def _row_heading(self, index: int, row) -> str:
+        return (
+            f"{self._label('group_row')} {index} | "
+            f"{self._label('debug_current_row')}: {getattr(row, 'excel_row', self._label('debug_none'))} | "
+            f"{self._label('group_amount')}: {format_vnd(getattr(row, 'amount', 0))}"
+        )
+
+    def _match_type_text(self, row) -> str:
+        match_type = getattr(row, "match_type", "none")
+        if match_type == "group":
+            return tr(self.language, "matched_group")
+        if match_type == "exact":
+            return tr(self.language, "matched_exact")
+        return self._label("debug_none")
+
+    def _label(self, key: str) -> str:
+        labels = {
+            "vi": {
+                "status_label": "Trạng thái",
+                "match_type_label": "Kiểu khớp",
+                "group_id_label": "Mã nhóm",
+                "group_shape_label": "Cấu trúc nhóm",
+                "group_total_current": "Tổng tiền bên này",
+                "group_total_counterpart": "Tổng tiền bên kia",
+                "group_diff": "Chênh lệch",
+                "group_summary": "Tóm tắt nhóm giao dịch",
+                "group_rows": "Số dòng",
+                "group_total": "Tổng tiền",
+                "group_row": "Dòng",
+                "group_amount": "Số tiền",
+                "debug_confidence": "Độ tin cậy",
+                "debug_current_row": "Dòng hiện tại",
+                "debug_counterpart_row": "Dòng đối ứng",
+                "debug_date_basis": "Ngày dùng để dò",
+                "debug_basis": "Căn cứ dò",
+                "debug_date_transaction": "Ngày giao dịch",
+                "debug_date_reference": "Ngày suy ra từ mã nội bộ",
+                "debug_none": "Không có",
+                "explain_show": "Xem giải thích cách dò",
+                "explain_hide": "Ẩn giải thích cách dò",
+            },
+            "en": {
+                "status_label": "Status",
+                "match_type_label": "Match type",
+                "group_id_label": "Group ID",
+                "group_shape_label": "Group shape",
+                "group_total_current": "This side total",
+                "group_total_counterpart": "Other side total",
+                "group_diff": "Difference",
+                "group_summary": "Grouped transaction summary",
+                "group_rows": "Rows",
+                "group_total": "Total amount",
+                "group_row": "Row",
+                "group_amount": "Amount",
+                "debug_confidence": "Confidence",
+                "debug_current_row": "Current row",
+                "debug_counterpart_row": "Matched row",
+                "debug_date_basis": "Date used",
+                "debug_basis": "Matching basis",
+                "debug_date_transaction": "Transaction date",
+                "debug_date_reference": "Date derived from internal code",
+                "debug_none": "None",
+                "explain_show": "Show reconciliation basis",
+                "explain_hide": "Hide reconciliation basis",
+            },
+            "zh": {
+                "status_label": "状态",
+                "match_type_label": "匹配类型",
+                "group_id_label": "组编号",
+                "group_shape_label": "组结构",
+                "group_total_current": "当前侧合计",
+                "group_total_counterpart": "对侧合计",
+                "group_diff": "差额",
+                "group_summary": "组合交易摘要",
+                "group_rows": "行数",
+                "group_total": "总金额",
+                "group_row": "行",
+                "group_amount": "金额",
+                "debug_confidence": "置信度",
+                "debug_current_row": "当前行",
+                "debug_counterpart_row": "对应行",
+                "debug_date_basis": "使用日期",
+                "debug_basis": "匹配依据",
+                "debug_date_transaction": "交易日期",
+                "debug_date_reference": "从内部编码推导的日期",
+                "debug_none": "无",
+                "explain_show": "查看对账依据",
+                "explain_hide": "隐藏对账依据",
+            },
+        }
+        return labels.get(self.language, labels["vi"]).get(key, key)
+
+    def _format_confidence(self, confidence: int) -> str:
+        if confidence <= 0:
+            return self._label("debug_none")
+        return f"{confidence}/100"
+
+    def _format_match_basis(self, reason: str) -> str:
+        if not reason:
+            return self._label("debug_none")
+        reasons = [segment.strip() for segment in reason.splitlines() if segment.strip()]
+        if not reasons:
+            return escape(self._label("debug_none"))
+        return (
+            "<ul style='margin:0;padding-left:18px'>"
+            + "".join(f"<li style='margin:0 0 4px 0'>{escape(item)}</li>" for item in reasons)
+            + "</ul>"
+        )
+
+    def _date_basis_label(self, reason: str) -> str:
+        if "Ngày theo mã nội bộ" in reason:
+            return self._label("debug_date_reference")
+        if "Ngày giao dịch" in reason:
+            return self._label("debug_date_transaction")
+        return self._label("debug_none")
+
+
+class HistoryDialog(QDialog):
+    def __init__(self, language: str, records: list[dict], parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        logo_path = logo_image_path()
+        if logo_path.exists():
+            self.setWindowIcon(QIcon(str(logo_path)))
+        self.language = language
+        self.setWindowTitle(tr(language, "recent_history"))
+        self.resize(920, 420)
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(18, 18, 18, 18)
+        layout.setSpacing(12)
+
+        title_label = QLabel(tr(language, "recent_history"))
+        title_label.setObjectName("sectionTitle")
+        layout.addWidget(title_label)
+
+        self.table = QTableWidget(0, 4, self)
+        self.table.verticalHeader().hide()
+        self.table.setEditTriggers(QTableWidget.NoEditTriggers)
+        self.table.setSelectionMode(QTableWidget.NoSelection)
+        self.table.setShowGrid(False)
+        self.table.setHorizontalHeaderLabels(
+            [
+                tr(language, "history_time"),
+                tr(language, "history_system"),
+                tr(language, "history_bank"),
+                tr(language, "history_result"),
+            ]
+        )
+        layout.addWidget(self.table)
+        self._fill_rows(records)
+
+    def _fill_rows(self, records: list[dict]) -> None:
+        self.table.setRowCount(len(records))
+        for row_index, record in enumerate(records):
+            scanned_at = str(record.get("scanned_at", "")).replace("T", " ")
+            summary = self._history_summary_text(record)
+            values = [
+                scanned_at,
+                Path(str(record.get("system_file", ""))).name,
+                Path(str(record.get("bank_file", ""))).name,
+                summary,
+            ]
+            for column_index, value in enumerate(values):
+                item = QTableWidgetItem(str(value))
+                item.setTextAlignment(int(Qt.AlignLeft | Qt.AlignVCenter))
+                self.table.setItem(row_index, column_index, item)
+        self.table.setWordWrap(True)
+        self.table.resizeColumnsToContents()
+        self.table.resizeRowsToContents()
+        self.table.setColumnWidth(0, 150)
+        self.table.setColumnWidth(1, 170)
+        self.table.setColumnWidth(2, 260)
+        self.table.horizontalHeader().setStretchLastSection(True)
+
+    def _history_summary_text(self, record: dict[str, object]) -> str:
+        if self.language == "en":
+            system_label, bank_label = "System", "Statement"
+            matched_label, review_label, unmatched_label = "matched", "review", "unmatched"
+        elif self.language == "zh":
+            system_label, bank_label = "系统", "流水"
+            matched_label, review_label, unmatched_label = "已匹配", "待复核", "未匹配"
+        else:
+            system_label, bank_label = "Hệ thống", "Sao kê"
+            matched_label, review_label, unmatched_label = "khớp", "cần kiểm tra", "không khớp"
+        return (
+            f"{system_label}: {record.get('matched_system', 0)} {matched_label}, "
+            f"{record.get('review_system', 0)} {review_label}, "
+            f"{record.get('unmatched_system', 0)} {unmatched_label}\n"
+            f"{bank_label}: {record.get('matched_bank', 0)} {matched_label}, "
+            f"{record.get('review_bank', 0)} {review_label}, "
+            f"{record.get('unmatched_bank', 0)} {unmatched_label}"
+        )

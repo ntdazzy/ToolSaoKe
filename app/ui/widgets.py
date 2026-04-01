@@ -206,9 +206,9 @@ class SpinnerWidget(QWidget):
         super().__init__(parent)
         self._step = 0
         self._timer = QTimer(self)
-        self._timer.setInterval(85)
+        self._timer.setInterval(70)
         self._timer.timeout.connect(self._advance)
-        self.setFixedSize(30, 30)
+        self.setFixedSize(42, 42)
 
     def start(self) -> None:
         self._step = 0
@@ -220,7 +220,7 @@ class SpinnerWidget(QWidget):
         self.update()
 
     def _advance(self) -> None:
-        self._step = (self._step + 1) % 8
+        self._step = (self._step + 1) % 10
         self.update()
 
     def paintEvent(self, event) -> None:
@@ -230,15 +230,15 @@ class SpinnerWidget(QWidget):
         painter.setPen(Qt.NoPen)
         center_x = self.width() / 2
         center_y = self.height() / 2
-        orbit = min(self.width(), self.height()) / 2 - 5
-        radius = 2.7
-        for index in range(8):
-            angle = ((math.pi * 2) / 8) * index - (math.pi / 2)
+        orbit = min(self.width(), self.height()) / 2 - 7
+        radius = 2.9
+        for index in range(10):
+            angle = ((math.pi * 2) / 10) * index - (math.pi / 2)
             x = center_x + math.cos(angle) * orbit
             y = center_y + math.sin(angle) * orbit
-            distance = (index - self._step) % 8
-            alpha = max(55, 255 - (distance * 26))
-            color = QColor("#2563eb")
+            distance = (index - self._step) % 10
+            alpha = max(35, 255 - (distance * 22))
+            color = QColor("#3b82f6")
             color.setAlpha(alpha)
             painter.setBrush(color)
             painter.drawEllipse(QPoint(int(x - radius), int(y - radius)), int(radius), int(radius))
@@ -250,24 +250,30 @@ class LoadingOverlay(QWidget):
         super().__init__(parent)
         self.setObjectName("loadingOverlay")
         self.setAttribute(Qt.WA_NoSystemBackground, False)
+        self.setAttribute(Qt.WA_StyledBackground, True)
         self._blur_targets: list[QWidget] = []
+        self._mode = "scan"
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setAlignment(Qt.AlignCenter)
 
         self.card = QFrame(self)
         self.card.setObjectName("loadingCard")
-        self.card.setMinimumWidth(150)
-        self.card.setMaximumWidth(170)
+        self.card.setMinimumWidth(260)
+        self.card.setMaximumWidth(320)
         card_layout = QVBoxLayout(self.card)
-        card_layout.setContentsMargins(22, 18, 22, 18)
-        card_layout.setSpacing(8)
+        card_layout.setContentsMargins(26, 22, 26, 22)
+        card_layout.setSpacing(10)
 
         shadow = QGraphicsDropShadowEffect(self.card)
-        shadow.setBlurRadius(18)
-        shadow.setOffset(0, 6)
-        shadow.setColor(Qt.black)
+        shadow.setBlurRadius(42)
+        shadow.setOffset(0, 18)
+        shadow.setColor(QColor(15, 23, 42, 90))
         self.card.setGraphicsEffect(shadow)
+
+        self.badge = QLabel("PROCESSING")
+        self.badge.setAlignment(Qt.AlignCenter)
+        self.badge.setObjectName("loadingBadge")
 
         self.spinner = SpinnerWidget(self.card)
         self.spinner.setObjectName("loadingSpinner")
@@ -276,13 +282,35 @@ class LoadingOverlay(QWidget):
         self.title.setAlignment(Qt.AlignCenter)
         self.title.setObjectName("loadingLabel")
 
+        self.hint = QLabel("")
+        self.hint.setAlignment(Qt.AlignCenter)
+        self.hint.setWordWrap(True)
+        self.hint.setObjectName("loadingHint")
+
+        card_layout.addWidget(self.badge, alignment=Qt.AlignCenter)
         card_layout.addWidget(self.spinner, alignment=Qt.AlignCenter)
         card_layout.addWidget(self.title)
+        card_layout.addWidget(self.hint)
         layout.addWidget(self.card, alignment=Qt.AlignCenter)
+        self.set_mode("scan")
         self.hide()
 
     def set_message(self, text: str) -> None:
         self.title.setText(text or "Loading")
+
+    def set_badge(self, text: str) -> None:
+        self.badge.setText(text or "")
+
+    def set_hint(self, text: str) -> None:
+        self.hint.setText(text or "")
+
+    def set_mode(self, mode: str) -> None:
+        self._mode = mode
+        is_filter = mode == "filter"
+        self.badge.setVisible(not is_filter)
+        self.hint.setVisible(not is_filter)
+        self.card.setMinimumWidth(190 if is_filter else 260)
+        self.card.setMaximumWidth(220 if is_filter else 320)
 
     def set_blur_targets(self, targets: list[QWidget]) -> None:
         self._blur_targets = targets
@@ -291,7 +319,7 @@ class LoadingOverlay(QWidget):
         for target in self._blur_targets:
             if enabled:
                 effect = QGraphicsBlurEffect(target)
-                effect.setBlurRadius(10)
+                effect.setBlurRadius(18 if self._mode == "scan" else 10)
                 target.setGraphicsEffect(effect)
             else:
                 target.setGraphicsEffect(None)

@@ -1,28 +1,32 @@
-# Tool Đối Soát Sao Kê Ngân Hàng
+﻿# Tool Äá»‘i SoÃ¡t Sao KÃª NgÃ¢n HÃ ng
 
-## 1. Tổng quan
+## 1. Tá»•ng quan
 
-Đây là ứng dụng desktop viết bằng Python để đối soát:
+ÄÃ¢y lÃ  á»©ng dá»¥ng desktop viáº¿t báº±ng Python Ä‘á»ƒ Ä‘á»‘i soÃ¡t giá»¯a:
 
-- File giao dịch từ hệ thống nội bộ
-- File sao kê ngân hàng Techcombank
+- file giao dá»‹ch tá»« há»‡ thá»‘ng ná»™i bá»™
+- file sao kÃª ngÃ¢n hÃ ng Techcombank
 
-Tool hiện chạy trên Windows, có giao diện PySide6, và có thể build thành file `.exe` để sử dụng nội bộ.
+Má»¥c tiÃªu cá»§a tool:
 
-Mục tiêu chính:
+- xÃ¡c Ä‘á»‹nh cÃ¡c giao dá»‹ch Ä‘Ã£ khá»›p cháº¯c
+- tÃ¡ch cÃ¡c giao dá»‹ch cáº§n kiá»ƒm tra thá»§ cÃ´ng
+- chá»‰ ra cÃ¡c giao dá»‹ch cÃ³ trong sao kÃª nhÆ°ng chÆ°a tháº¥y trong há»‡ thá»‘ng
+- chá»‰ ra cÃ¡c giao dá»‹ch cÃ³ trong há»‡ thá»‘ng nhÆ°ng chÆ°a tháº¥y trong sao kÃª
+- há»— trá»£ xuáº¥t Excel Ä‘á»ƒ káº¿ toÃ¡n hoáº·c kiá»ƒm soÃ¡t tiáº¿p tá»¥c xá»­ lÃ½
 
-- Đối chiếu giao dịch giữa hệ thống và sao kê
-- Phân loại kết quả thành `matched`, `review`, `unmatched`
-- Giúp người dùng rà nhanh các dòng cần kiểm tra
-- Xuất kết quả ra Excel để xử lý tiếp
+Tool hiá»‡n cháº¡y trÃªn Windows, dÃ¹ng PySide6 cho giao diá»‡n vÃ  cÃ³ thá»ƒ build thÃ nh file `.exe`.
 
-README này mô tả đồng thời 3 lớp nội dung:
+README nÃ y lÃ  tÃ i liá»‡u ká»¹ thuáº­t vÃ  nghiá»‡p vá»¥ cá»§a source hiá»‡n táº¡i, dÃ¹ng cho 4 má»¥c Ä‘Ã­ch:
 
-1. Tính năng đang có trong source
-2. Logic đối soát mà source hiện tại đang thực thi
-3. Logic nghiệp vụ đề xuất để nâng cấp source dựa trên dữ liệu mẫu trong `file/202512`, `file/202601`, `file/202602`, `file/202603`
+1. mÃ´ táº£ Ä‘áº§y Ä‘á»§ kiáº¿n trÃºc source Ä‘ang cháº¡y
+2. mÃ´ táº£ tÃ­nh nÄƒng hiá»‡n cÃ³ cá»§a á»©ng dá»¥ng
+3. mÃ´ táº£ logic Ä‘á»‘i soÃ¡t hiá»‡n táº¡i trong code
+4. chá»‘t cÃ¡c rule nghiá»‡p vá»¥ Ä‘Ã£ xÃ¡c nháº­n trÃªn dá»¯ liá»‡u máº«u Ä‘á»ƒ lÃ m ná»n cho cÃ¡c bÆ°á»›c nÃ¢ng cáº¥p tiáº¿p theo
 
-## 2. Công nghệ sử dụng
+---
+
+## 2. CÃ´ng nghá»‡ sá»­ dá»¥ng
 
 - Python
 - PySide6
@@ -31,1009 +35,1179 @@ README này mô tả đồng thời 3 lớp nội dung:
 - SQLite
 - PyInstaller
 
-## 3. Cấu trúc source
+---
+
+## 3. Cáº¥u trÃºc source hiá»‡n táº¡i
 
 ```text
-main.py                         Điểm khởi động ứng dụng
-build_exe.bat                   Script build file exe
-app/models.py                   Dataclass dữ liệu đối soát
-app/i18n.py                     Đa ngôn ngữ
-app/logging_utils.py            Cấu hình log theo ngày
-app/resource_utils.py           Tìm tài nguyên khi chạy source/exe
-app/services/excel_loader.py    Nhận diện và đọc file Excel
-app/services/reconciliation.py  Engine đối soát hiện tại
-app/services/exporter.py        Xuất Excel
-app/services/history_store.py   Lưu lịch sử vào SQLite
-app/services/utils.py           Hàm tiện ích, parse, normalize, token
-app/ui/main_window.py           Giao diện chính
-app/ui/table_models.py          Model/filter cho lưới dữ liệu
-app/ui/widgets.py               Widget tùy biến
-tests/test_reconciliation_logic.py  Test logic cốt lõi
-file/                           Bộ dữ liệu mẫu
-data/history.sqlite             Cơ sở dữ liệu lịch sử khi chạy thực tế
-data/logs/YYYYMMDD.log          File log theo ngày
+main.py
+build_exe.bat
+
+app/
+  __init__.py
+  i18n.py
+  logging_utils.py
+  models.py
+  resource_utils.py
+
+  services/
+    __init__.py
+    excel_loader.py
+    exporter.py
+    history_store.py
+    reconciliation.py
+    utils.py
+
+  ui/
+    __init__.py
+    chips.py
+    components.py
+    config.py
+    dialogs.py
+    main_window.py
+    main_window_actions_mixin.py
+    main_window_filter_mixin.py
+    main_window_scan_mixin.py
+    metadata.py
+    pages.py
+    panels.py
+    styles.py
+    table_models.py
+    widgets.py
+    workers.py
+
+tests/
+  test_excel_file_kind.py
+  test_main_window_scan_flow.py
+  test_reconciliation_logic.py
 ```
 
-## 4. Tính năng hiện có trong source
+### 3.1. Vai trÃ² cá»§a tá»«ng nhÃ³m file
 
-### 4.1. Chọn file và kiểm tra file
+#### `app/models.py`
 
-- Chọn `File hệ thống` và `File sao kê`
-- Hỗ trợ `.xls` và `.xlsx`
-- Kiểm tra file có đúng loại hay không trước khi đối soát
-- Phát hiện trường hợp người dùng chọn ngược slot `hệ thống` và `sao kê`
+Khai bÃ¡o dataclass cho:
 
-### 4.2. Giao diện đối soát
+- `BankMetadata`
+- `SystemTransaction`
+- `BankTransaction`
+- `ReconciliationSummary`
+- `ReconciliationResult`
 
-- Giao diện một cửa sổ
-- Chỉ hiển thị một lưới dữ liệu tại một thời điểm
-- Có thể đổi qua lại giữa lưới `Hệ thống` và `Sao kê`
-- Có loading overlay khi đang xử lý
-- Có popup chi tiết đối ứng
-- Có thể mở và focus sang dòng đối ứng ở lưới còn lại
+Äiá»ƒm quan trá»ng:
 
-### 4.3. Bộ lọc và tìm kiếm
+- má»—i dÃ²ng giao dá»‹ch Ä‘á»u cÃ³:
+  - `status`: `matched`, `review`, `unmatched`
+  - `match_type`: `exact`, `group`, `none`
+  - `group_id`
+  - `group_order`
+  - `confidence`
+  - `match_reason`
+- cÃ¡c dÃ²ng `review` cÃ³ thá»ƒ lÆ°u danh sÃ¡ch á»©ng viÃªn Ä‘á»‘i á»©ng:
+  - phÃ­a há»‡ thá»‘ng: `review_bank_ids`, `review_bank_rows`
+  - phÃ­a sao kÃª: `review_system_ids`, `review_system_rows`
 
-Source hiện tại đã có:
+#### `app/services/excel_loader.py`
 
-- Lọc trạng thái:
-  - `all`
-  - `matched`
-  - `review`
-  - `unmatched`
-- Lọc loại giao dịch:
-  - `all`
-  - `income`
-  - `expense`
-  - `tax`
-- Lọc mã tham chiếu hiện hỗ trợ trên UI:
-  - `FT`
-  - `ST`
-  - `SK`
-  - `LD`
-  - `HB`
-- Tìm kiếm theo:
-  - tất cả cột
-  - một cột cụ thể
-- Quick search đồng bộ cho cả hai lưới
-- Lọc theo khoảng ngày
-- Sắp xếp theo cột thông qua `QSortFilterProxyModel`
+Chá»‹u trÃ¡ch nhiá»‡m:
 
-### 4.4. Tổng hợp kết quả
+- nháº­n diá»‡n file Ä‘áº§u vÃ o lÃ  file há»‡ thá»‘ng hay file sao kÃª
+- Ä‘á»c workbook Excel
+- chuáº©n hÃ³a dá»¯ liá»‡u thÃ nh `SystemTransaction` vÃ  `BankTransaction`
+- trÃ­ch metadata cá»§a sao kÃª
 
-- Hiển thị tổng số `matched`, `review`, `unmatched`
-- Hiển thị số dòng đang thấy trên lưới / tổng số dòng
-- Hiển thị metadata của sao kê:
-  - ngân hàng
-  - mã số thuế
-  - kỳ sao kê
-  - số tài khoản
-  - tên tài khoản
-  - loại tiền
-  - loại tài khoản
-  - số dư đầu kỳ
-  - số dư hiện tại
-  - số dư cuối kỳ
-  - tổng ghi nợ
-  - tổng ghi có
-  - tổng phí
-  - tổng VAT
-  - tổng lệnh ghi nợ
-  - tổng lệnh ghi có
+CÃ¡c Ä‘iá»ƒm Ä‘Ã¡ng chÃº Ã½:
 
-### 4.5. Lịch sử và log
+- `detect_excel_file_kind(path)` dÃ¹ng Ä‘á»ƒ cháº·n sai loáº¡i file ngay tá»« Ä‘áº§u
+- loader Ä‘Ã£ Ä‘Æ°á»£c test láº¡i trÃªn cÃ¡c bá»™ máº«u trong thÆ° má»¥c `file/`
+- phÃ­a bank cÃ³ cÃ¡c cá»™t `debit`, `credit`, `fee`, `vat`, `amount`, `direction`
 
-- Mỗi lần chạy xong sẽ lưu kết quả tổng hợp vào SQLite
-- UI có nút xem lịch sử đối soát gần đây
-- Log ghi ra file theo ngày trong `data/logs`
+#### `app/services/utils.py`
 
-### 4.6. Xuất Excel
+Chá»©a cÃ¡c hÃ m tiá»‡n Ã­ch:
 
-Source hiện tại cho phép:
+- chuáº©n hÃ³a text
+- parse ngÃ y / datetime
+- trÃ­ch token tham chiáº¿u
+- trÃ­ch prefix tham chiáº¿u
 
-- Xuất theo lưới đang xem:
-  - nếu đang xem `Hệ thống` thì xuất lưới hệ thống
-  - nếu đang xem `Sao kê` thì xuất lưới sao kê
-- Xuất theo đúng bộ lọc hiện tại
-- Nếu đang ở chế độ `status = all` thì tô đỏ dòng `unmatched`
-- Có tùy chọn đính kèm thêm sheet sao kê gốc
+Hiá»‡n source Ä‘ang há»— trá»£ tá»‘t cÃ¡c prefix/token chÃ­nh:
 
-### 4.7. Đa ngôn ngữ
+- `FT`
+- `TT`
+- `LD`
+- `HB`
+- `ST`
+- `SK`
 
-- Tiếng Việt
-- English
-- 中文简体
+#### `app/services/reconciliation.py`
 
-## 5. Luồng xử lý hiện tại trong source
+ÄÃ¢y lÃ  engine Ä‘á»‘i soÃ¡t chÃ­nh.
 
-### 5.1. Điểm vào
+Vai trÃ²:
 
-`main.py` đang thực hiện:
+- táº¡o candidate giá»¯a 2 phÃ­a
+- cháº¡y cÃ¡c vÃ²ng match theo má»©c Ä‘á»™ cháº¯c cháº¯n
+- gáº¯n `matched`, `review`, `unmatched`
+- táº¡o summary cuá»‘i cÃ¹ng
 
-- Cấu hình UTF-8 cho stdout/stderr
-- Tạo `QApplication`
-- Nạp icon nếu có
-- Mở `MainWindow`
+#### `app/services/exporter.py`
 
-### 5.2. MainWindow
+Xuáº¥t káº¿t quáº£ Ä‘á»‘i soÃ¡t ra Excel.
 
-`app/ui/main_window.py` đang phụ trách:
+#### `app/services/history_store.py`
 
-- Chọn file
-- Validate file trước khi đối soát
-- Chạy worker thread để tránh treo UI
-- Nhận `ReconciliationResult`
-- Bind dữ liệu vào lưới
-- Áp bộ lọc
-- Hiển thị metadata
-- Hiển thị popup đối ứng
-- Xuất Excel
-- Tải lịch sử từ SQLite
+LÆ°u lá»‹ch sá»­ Ä‘á»‘i soÃ¡t báº±ng SQLite.
 
-### 5.3. Loader
+#### `app/ui/`
 
-`app/services/excel_loader.py` đang phụ trách:
+Sau refactor, giao diá»‡n Ä‘Ã£ Ä‘Æ°á»£c tÃ¡ch thÃ nh nhiá»u file nhá» hÆ¡n:
 
-- Nhận diện file là `system`, `bank`, hay `unknown`
-- Đọc file hệ thống `.xls`
-- Đọc file sao kê `.xlsx`
-- Parse metadata sao kê
-- Chuẩn hóa dữ liệu thành `SystemTransaction` và `BankTransaction`
+- `main_window.py`
+  - chá»‰ cÃ²n vai trÃ² Ä‘iá»u phá»‘i chÃ­nh
+- `main_window_scan_mixin.py`
+  - chá»n file, scan, bind káº¿t quáº£, chuyá»ƒn page
+- `main_window_filter_mixin.py`
+  - filter, search, update summary, row count
+- `main_window_actions_mixin.py`
+  - lá»‹ch sá»­, popup chi tiáº¿t, export
+- `pages.py`
+  - `StartupPage`, `ResultsPage`
+- `chips.py`
+  - `ChipButton`, `ChipPalette`
+- `panels.py`
+  - cÃ¡c panel dÃ¹ng chung
+- `dialogs.py`
+  - `PairDialog`, `HistoryDialog`
+- `styles.py`
+  - stylesheet dÃ¹ng chung
+- `config.py`
+  - config UI, header, width cá»™t, nhÃ£n phá»¥
+- `metadata.py`
+  - layout metadata sao kÃª
+- `widgets.py`
+  - widget tÃ¹y biáº¿n vÃ  loading overlay
+- `workers.py`
+  - `ScanWorker`
 
-### 5.4. Reconciliation engine
+#### `tests/`
 
-`app/services/reconciliation.py` đang phụ trách:
+- `test_reconciliation_logic.py`
+  - test cÃ¡c rule Ä‘á»‘i soÃ¡t
+- `test_main_window_scan_flow.py`
+  - test regression cho luá»“ng scan vÃ  chuyá»ƒn page
+- `test_excel_file_kind.py`
+  - test detector file tháº­t trong cÃ¡c bá»™ máº«u
 
-- Gom nhóm theo `(direction, amount)`
-- Chấm điểm từng cặp ứng viên
-- Chạy các vòng match:
-  - `reference`
-  - `voucher_unique`
-  - `derived_unique`
-  - gom nhóm VAT
-  - vòng cuối `scored`
-- Gán `matched`, `review`, `unmatched`
+---
 
-### 5.5. Exporter
+## 4. TÃ­nh nÄƒng hiá»‡n cÃ³ cá»§a á»©ng dá»¥ng
 
-`app/services/exporter.py` đang phụ trách:
+### 4.1. Chá»n file vÃ  dÃ²
 
-- Tạo workbook mới
-- Ghi header và dữ liệu hiển thị
-- Tô màu dòng `unmatched` khi cần
-- Sao chép thêm sheet sao kê gốc nếu người dùng bật option
+á»¨ng dá»¥ng cho phÃ©p:
 
-### 5.6. History store
+- chá»n file há»‡ thá»‘ng
+- chá»n file sao kÃª
+- chá»n ngÃ´n ngá»¯
+- báº¥m `DÃ² sao kÃª`
 
-`app/services/history_store.py` đang phụ trách:
+Luá»“ng UI hiá»‡n táº¡i dÃ¹ng 2 mÃ n hÃ¬nh riÃªng:
 
-- Tạo schema SQLite nếu chưa có
-- Lưu tổng hợp sau mỗi lần đối soát
-- Lấy danh sách lịch sử gần đây
+- `StartupPage`
+- `ResultsPage`
 
-## 6. Định dạng dữ liệu đầu vào
+Khi báº¥m dÃ²:
 
-### 6.1. File hệ thống
+- app chuyá»ƒn sang mÃ n hÃ¬nh káº¿t quáº£
+- hiá»‡n loading overlay
+- táº¡o `ScanWorker` Ä‘á»ƒ Ä‘á»c file vÃ  cháº¡y reconciliation
+- toÃ n bá»™ cáº­p nháº­t UI Ä‘Æ°á»£c Ä‘Æ°a vá» GUI thread báº±ng `Qt.QueuedConnection`
 
-- Định dạng thiết kế để đọc từ `.xls`
-- Các cột bắt buộc mà source hiện kỳ vọng:
-  - cột ngày chứng từ
-  - cột số chứng từ
-  - cột tóm tắt
-  - cột tài khoản đối ứng
-  - cột số tiền bên Có
-  - cột số tiền bên Nợ
+### 4.2. MÃ n hÃ¬nh káº¿t quáº£
 
-Lưu ý:
+MÃ n hÃ¬nh sau khi dÃ² gá»“m:
 
-- Trong code hiện tại, các literal header đang lấy trực tiếp từ file thực tế
-- Nếu mở source ở môi trường encoding không chuẩn, các chuỗi header tiếng Trung có thể hiển thị sai hình thức
-- Về nghiệp vụ, ý nghĩa thật của các cột vẫn là như trên
+- cá»¥m chá»n file á»Ÿ gÃ³c trÃ¡i
+- cá»¥m metadata sao kÃª bÃªn pháº£i
+- khu vá»±c `Káº¿t quáº£ dÃ²`
+- 2 lÆ°á»›i `Sao kÃª` vÃ  `Há»‡ thá»‘ng`
+- cÃ¡c filter, chip tráº¡ng thÃ¡i, action bar, popup chi tiáº¿t
 
-#### Cách source đọc file hệ thống hiện tại
+### 4.3. Metadata sao kÃª
 
-- Hàm detect có thể tìm header trong 8 dòng đầu
-- Nhưng hàm load hiện tại vẫn giả định header nằm ở dòng đầu tiên
-- Chỉ đọc 10 cột đầu tiên
-- Bỏ qua dòng rỗng
-- Bỏ qua dòng `上期结转`
+Hiá»ƒn thá»‹:
 
-#### Chuẩn hóa `SystemTransaction`
+- tÃªn ngÃ¢n hÃ ng
+- sá»‘ tÃ i khoáº£n
+- tÃªn tÃ i khoáº£n
+- loáº¡i tÃ i khoáº£n
+- loáº¡i tiá»n
+- mÃ£ sá»‘ thuáº¿
+- ká»³ sao kÃª
+- sá»‘ dÆ° Ä‘áº§u ká»³ / cuá»‘i ká»³ / hiá»‡n táº¡i
+- tá»•ng ghi ná»£ / ghi cÃ³
+- tá»•ng phÃ­ / VAT
+- tá»•ng sá»‘ lá»‡nh ghi ná»£ / ghi cÃ³
 
-- `direction = income` nếu `amount_debit > 0` và `amount_credit == 0`
-- Ngược lại coi là `expense`
-- `amount`:
-  - income -> `amount_debit`
-  - expense -> `amount_credit`
-- Text để tokenize:
-  - voucher number
-  - summary
-  - counterpart account
-  - data source
+### 4.4. Bá»™ lá»c
 
-### 6.2. File sao kê
+á»¨ng dá»¥ng hiá»‡n cÃ³:
 
-- Định dạng thiết kế để đọc từ `.xlsx`
-- Header row được tìm trong 40 dòng đầu
-- Các cột quan trọng:
-  - `Requesting datetime`
-  - `Transaction date`
-  - `Reference number`
-  - `Description`
-  - `Debit`
-  - `Credit`
-  - `Fee/Interest`
-  - `Transaction VAT`
+- filter tráº¡ng thÃ¡i báº±ng chip:
+  - `Táº¥t cáº£`
+  - `GD Khá»›p`
+  - `PhÃ­/VAT Ä‘Ã£ khá»›p`
+  - `Cáº§n kiá»ƒm tra`
+  - `ChÆ°a khá»›p`
+- filter loáº¡i giao dá»‹ch:
+  - `Táº¥t cáº£ giao dá»‹ch`
+  - `Chá»‰ hiá»‡n thu`
+  - `Chá»‰ hiá»‡n chi`
+  - `Chá»‰ hiá»‡n thuáº¿`
+- filter theo `MÃ£ TCB`
+- filter theo ngÃ y
+- filter tÃ¬m kiáº¿m text
 
-#### Chuẩn hóa `BankTransaction`
+LÆ°u Ã½ quan trá»ng:
 
-- `direction = income` nếu `credit > 0`, ngược lại là `expense`
-- `expense_total = abs(debit) + abs(fee) + abs(vat)`
-- `amount`:
-  - income -> `credit`
-  - expense -> `expense_total`
+- `PhÃ­/VAT Ä‘Ã£ khá»›p` hiá»‡n má»›i lÃ  `group match` duy nháº¥t Ä‘Ã£ Ä‘Æ°á»£c code cháº¯c
+- tÃªn nÃ y khÃ´ng cÃ³ nghÄ©a lÃ  source Ä‘Ã£ há»— trá»£ Ä‘áº§y Ä‘á»§ má»i loáº¡i `group match`
 
-Lưu ý quan trọng:
+### 4.5. Popup chi tiáº¿t
 
-- Source hiện tại chưa lưu riêng `income_gross` và `income_net`
-- Vì vậy các dòng thu có `fee/vat` có thể bị sót nếu hệ thống ghi số net thay vì gross
+Khi click má»™t dÃ²ng:
 
-#### Metadata sao kê được đọc
+- náº¿u lÃ  `matched exact`, popup hiá»ƒn thá»‹ cáº·p Ä‘á»‘i á»©ng 1-1
+- náº¿u lÃ  `matched group`, popup hiá»ƒn thá»‹ nhÃ³m Ä‘á»‘i á»©ng
+- náº¿u lÃ  `review`, popup hiá»ƒn thá»‹ danh sÃ¡ch á»©ng viÃªn Ä‘á»‘i á»©ng Ä‘Ã£ lÆ°u trong row metadata
 
-- Bank name
-- Tax code
-- From date / To date
-- Account number
-- Account name
-- Currency
-- Account type
-- Opening / actual / closing balance
-- Total debits / credits / fees / VAT
-- Total debit / credit transactions
+### 4.6. Lá»‹ch sá»­ vÃ  xuáº¥t Excel
 
-## 7. Token và mã nghiệp vụ đang được source nhận diện
+á»¨ng dá»¥ng há»— trá»£:
 
-`app/services/utils.py` hiện tại nhận diện các reference token sau:
+- lÆ°u lá»‹ch sá»­ dÃ²
+- xem láº¡i lá»‹ch sá»­
+- xuáº¥t Excel
+- tÃ¹y chá»n `KÃ¨m sheet sao kÃª`
+
+### 4.7. Build file `.exe`
+
+Repo cÃ³ sáºµn `build_exe.bat`.
+
+Script build hiá»‡n táº¡i:
+
+- tá»± dÃ² Python tháº­t:
+  - Æ°u tiÃªn `py -3.13`
+  - rá»“i `py -3`
+  - rá»“i fallback `where python`
+- trÃ¡nh dÃ¹ng nháº§m `WindowsApps\python.exe`
+- cÃ i `requirements.txt`
+- táº¡o icon tá»« `logo.png`
+- build báº±ng PyInstaller
+
+---
+
+## 5. Luá»“ng xá»­ lÃ½ hiá»‡n táº¡i
+
+### 5.1. Luá»“ng scan
+
+1. chá»n file há»‡ thá»‘ng
+2. chá»n file sao kÃª
+3. báº¥m `DÃ² sao kÃª`
+4. app chuyá»ƒn sang `ResultsPage`
+5. hiá»‡n scan overlay
+6. `ScanWorker` cháº¡y trong thread riÃªng
+7. worker Ä‘á»c file, load data, cháº¡y reconciliation
+8. káº¿t quáº£ Ä‘Æ°á»£c Ä‘áº©y vá» GUI thread
+9. bind vÃ o 2 báº£ng, metadata, summary, filter
+10. áº©n loading
+
+### 5.2. Luá»“ng threading
+
+ÄÃ¢y lÃ  Ä‘iá»ƒm Ä‘Ã£ Ä‘Æ°á»£c sá»­a regression.
+
+NguyÃªn táº¯c hiá»‡n táº¡i:
+
+- worker chá»‰ Ä‘á»c file vÃ  táº¡o data thuáº§n
+- worker khÃ´ng táº¡o hay cháº¡m vÃ o `QWidget`, `QHeaderView`, `QAbstractItemModel`
+- toÃ n bá»™ bind model/view chá»‰ cháº¡y á»Ÿ main thread
+- cÃ¡c signal `finished`, `failed`, `thread.finished` dÃ¹ng `Qt.QueuedConnection`
+
+Má»¥c tiÃªu:
+
+- trÃ¡nh lá»—i kiá»ƒu:
+  - `QObject: Cannot create children for a parent that is in a different thread`
+  - `QBasicTimer::start: Timers cannot be started from another thread`
+
+### 5.3. Luá»“ng filter
+
+Sau khi Ä‘Ã£ cÃ³ `current_result`:
+
+- filter chip, ngÃ y, mÃ£ TCB, tÃ¬m kiáº¿m sáº½ cháº¡y trÃªn dá»¯ liá»‡u Ä‘Ã£ bind
+- filter loading lÃ  overlay riÃªng
+- filter loading khÃ´ng Ä‘Æ°á»£c chen vÃ o khi scan overlay Ä‘ang cháº¡y
+
+---
+
+## 6. Logic Ä‘á»c vÃ  chuáº©n hÃ³a dá»¯ liá»‡u
+
+### 6.1. File há»‡ thá»‘ng
+
+Loader chuáº©n hÃ³a ra:
+
+- `voucher_date`
+- `voucher_number`
+- `summary`
+- `counterpart_account`
+- `amount_debit`
+- `amount_credit`
+- `direction`
+- `amount`
+- `balance`
+- `data_source`
+- `normalized_text`
+- `reference_tokens`
+- `reference_prefixes`
+
+### 6.2. File sao kÃª
+
+Loader chuáº©n hÃ³a ra:
+
+- `requesting_datetime`
+- `transaction_date`
+- `reference_number`
+- `remitter_bank`
+- `remitter_account_number`
+- `remitter_account_name`
+- `description`
+- `debit`
+- `credit`
+- `fee`
+- `vat`
+- `amount`
+- `direction`
+- `running_balance`
+- `normalized_text`
+- `reference_tokens`
+- `reference_prefixes`
+
+### 6.3. Nháº­n diá»‡n loáº¡i file
+
+`detect_excel_file_kind(path)` hiá»‡n Ä‘Æ°á»£c dÃ¹ng Ä‘á»ƒ:
+
+- phÃ¢n biá»‡t file há»‡ thá»‘ng vÃ  file sao kÃª
+- cháº·n file sai loáº¡i trÆ°á»›c khi vÃ o luá»“ng scan chÃ­nh
+
+Pháº§n nÃ y Ä‘Ã£ cÃ³ test vá»›i dá»¯ liá»‡u tháº­t:
+
+- `202512`
+- `202601`
+- `202602`
+- `202603`
+- `202603.1`
+
+---
+
+## 7. Logic Ä‘á»‘i soÃ¡t hiá»‡n táº¡i trong source
+
+Pháº§n nÃ y mÃ´ táº£ Ä‘Ãºng engine hiá»‡n Ä‘ang cháº¡y trong `app/services/reconciliation.py`.
+
+### 7.1. Dá»¯ liá»‡u Ä‘áº§u vÃ o mÃ  engine sá»­ dá»¥ng
+
+Má»—i giao dá»‹ch sau khi load Ä‘á»u Ä‘Æ°á»£c chuáº©n hÃ³a thÃ nh má»™t row cÃ³ cÃ¡c nhÃ³m dá»¯ liá»‡u sau:
+
+#### a. ThÃ´ng tin lÃµi
+
+- ngÃ y
+- chiá»u giao dá»‹ch
+- sá»‘ tiá»n
+- diá»…n giáº£i chuáº©n hÃ³a
+- token text
+
+#### b. ThÃ´ng tin tham chiáº¿u
+
+- `reference_number` phÃ­a bank
+- token tham chiáº¿u trÃ­ch tá»« mÃ´ táº£
+- prefix tham chiáº¿u
+
+VÃ­ dá»¥ prefix Ä‘ang Ä‘Æ°á»£c source nháº­n diá»‡n tá»‘t:
 
 - `FT`
 - `TT`
 - `LD`
 - `ST`
+- `HB`
 - `SK`
-- `HB`
 
-### Kết quả quét trên 4 bộ data mẫu
-
-Nếu chỉ xét `Reference number` phía bank, các prefix chính xuất hiện là:
-
-- `FT`
-- `LD`
-- `TT`
-- `HB`
-- thêm 1 kiểu numeric reference cho lãi ngân hàng:
-  - `19135065170012-YYYYMMDD`
-
-Ngoài ra, trong `Description` và `Summary` xuất hiện nhiều mã nghiệp vụ bổ trợ mà source hiện chưa coi là reference mạnh:
-
-- `BHD...`
-- `PPP_...`
-- `PO...`
-- `IV...`
-- `LTVN...`
-- `YH...`
-- `HN-...`
-- `HW-...`
-- `SA...`
-- `BL...`
-- `TK...`
-- `TBNP...`
-- `MST...`
-- `HAQZH...`
-- `ZGNQZH...`
-- `SITGQISG...`
-- `SNK...`
-- `KMTCBKK...`
-- `BKKCB...`
-- `NSSLBKHCC...`
-- `LMCK...`
-- `OT...`
-- `IBBIZ...`
-
-Kết luận:
-
-- Không phải mã nào cũng là `reference mạnh`
-- Có mã nên coi là `key nhóm nghiệp vụ`
-- Có mã chỉ nên coi là `context hỗ trợ`
-
-## 8. Logic đối soát hiện tại trong source
-
-### 8.1. Nguyên tắc tổng quát
-
-Source hiện tại:
-
-- Lấy sao kê ngân hàng làm chuẩn tham chiếu
-- Chỉ ghép cặp trong cùng nhóm `(direction, amount)`
-- Sau đó tính điểm theo:
-  - trùng reference token
-  - độ lệch ngày
-  - độ giống mô tả
-  - có VAT hay không
-  - nhóm số tiền có unique hay không
-
-### 8.2. Các pass match hiện tại
-
-1. `reference`
-2. `voucher_unique`
-3. `derived_unique`
-4. `tax aggregate`
-5. `scored`
-
-#### Ý nghĩa từng pass
-
-- `reference`: ưu tiên cặp có trùng reference token
-- `voucher_unique`: ngày chứng từ trùng ngày, nhóm unique hoặc mutual closest
-- `derived_unique`: ngày suy ra từ `SKYYYYMMDD-n` trùng ngày
-- `tax aggregate`: gom riêng nhóm chi có VAT
-- `scored`: vòng cuối cho các ca còn lại
-
-### 8.3. Trạng thái đầu ra hiện tại
-
-- `matched`
-- `review`
-- `unmatched`
-
-Source hiện tại chưa có `matched_group` riêng. Nếu cần hỗ trợ group match trong tương lai, nên thêm trường phụ để phân biệt:
-
-- `match_type = exact`
-- `match_type = group`
-
-## 9. Kiểm chứng trên data mẫu
-
-Đã dò lại toàn bộ 4 bộ data mẫu và xác nhận:
-
-### 9.1. Các rule hiện rất chắc
-
-- `FT` ở nhóm chi trực tiếp từ hệ thống:
-  - `238/238` dòng đúng theo `FT`
-- `LD/ST` ở nghiệp vụ vay:
-  - `392/392` dòng đúng theo `ST`
-- `TT income`:
-  - `14/14` dòng là nộp tiền
-- `TT expense`:
-  - `63/65` dòng khớp trực tiếp là rút tiền
-  - `2` dòng còn lại là ca tách dòng
-- `HB`:
-  - `32/32` dòng `110,000` là phí Homebanking
-- Lãi ngân hàng cuối tháng:
-  - `3/3` dòng đúng
-
-### 9.2. Các bằng chứng cho group match
-
-Đã tìm thấy:
-
-- `8` dòng bank `unmatched` thực ra bằng tổng `2` dòng system
-- `6` dòng system `unmatched` thực ra bằng tổng `2` dòng bank
-
-Ví dụ thật:
-
-- `2025-12-11`:
-  - bank `5,958,628,434`
-  - system `958,628,434 + 5,000,000,000`
-- `2026-01-13`:
-  - bank `2,000,000,000`
-  - system `1,111,487,842 + 888,512,158`
-- `2026-02-04`:
-  - bank `23,968,166`
-  - system `10,926,017 + 13,042,149`
-- `2026-03-25`:
-  - system `64,439,000`
-  - bank `24,749,000 + 39,690,000`
-
-### 9.3. `Review` không đồng nghĩa với khớp đúng
-
-Trên data mẫu có:
-
-- `36` nhóm lặp số tiền gây mơ hồ
-- tổng cộng `154` dòng review nằm trong các nhóm lặp số tiền
-
-Ví dụ thật:
-
-- `VỮNG PHÁT` có 2 dòng cùng số tiền, đúng tên đối tác, đúng ngày, nhưng đang bị đảo invoice
-- `PHÚ HOA` bị review sang `HOÀNG QUÂN` chỉ vì cùng số tiền và gần ngày
-- `BỐN NAM` bị review sang `Trong Sơn` chỉ vì cùng số tiền và trùng ngày
-
-Kết luận:
-
-- `review` chỉ có nghĩa là `có ứng viên`
-- không được xem `review` là `đã khớp`
-
-### 9.4. `Income có fee/vat` không có một công thức duy nhất
-
-Ví dụ:
-
-- `OWEN`:
-  - bank `credit 1,174,222,483`
-  - `fee -10,000`
-  - `vat -1,000`
-  - system ghi `1,174,211,483`
-  - đây là trường hợp `net = credit + fee + vat`
-
-Nhưng:
-
-- Có dòng `TT` nộp tiền vẫn phải khớp theo `gross = credit`
-
-Kết luận:
-
-- Với `income có fee/vat`, engine phải thử cả `gross` và `net`
-- Không được hard-code một công thức duy nhất
-
-## 10. Quy tắc nghiệp vụ đề xuất để áp dụng vào source
-
-Đây là phần spec nghiệp vụ cần chốt trước khi sửa code.
-
-### 10.1. Mục tiêu nghiệp vụ
-
-Tool phải trả lời được 4 câu hỏi:
-
-1. Giao dịch nào đã khớp chắc
-2. Giao dịch nào có thể khớp nhưng cần kiểm tra
-3. Giao dịch nào có trong sao kê nhưng không có trong hệ thống
-4. Giao dịch nào có trong hệ thống nhưng không có trong sao kê
-
-### 10.2. Nguyên tắc chốt nghiệp vụ
-
-- Sao kê vẫn là nguồn tham chiếu chính
-- Đối soát phải làm 2 chiều
-- Không ép match nếu bằng chứng chưa đủ
-- `amount + date` không đủ để tự động kết luận
-- Chỉ chấp nhận chênh tiền nếu giải thích được bởi `fee/vat`
-- Nếu khác đối tác, khác invoice, khác `ST/BHD/PO/BL/contract` rõ ràng thì không được auto-match
-
-### 10.3. Phân loại giao dịch trước khi match
-
-Engine nên phân giao dịch thành các họ giao dịch:
-
-1. `direct_bank_payment`
-2. `loan`
-3. `cash_withdrawal`
-4. `cash_deposit`
-5. `homebanking_fee`
-6. `bank_interest`
-7. `salary`
-8. `customer_receipt`
-9. `refund_adjustment`
-10. `logistics_import_tax_fee`
-
-### 10.4. Key mạnh và key phụ
-
-#### Key mạnh
-
-Chỉ được coi là key mạnh trong phạm vi nghiệp vụ phù hợp:
-
-- `FT` cho chi trực tiếp
-- `ST` cho vay
-- `BHD` cho vay
-- `TT` cho nộp/rút tiền
-- `HB` cho Homebanking
-- `19135065170012-YYYYMMDD` cho lãi ngân hàng cuối tháng
-
-#### Key phụ
-
-Dùng để tăng độ tin cậy, gom nhóm, hoặc veto:
-
-- `PPP`
-- `SK`
-- `invoice / HD / IV`
-- `PO`
-- `BL`
-- `TK`
-- `contract`
-- `LTVN`
-- `YH / HN / HW / SA`
-- `HAQZH / ZGNQZH / SITGQISG / SNK / KMTCBKK / BKKCB / NSSLBKHCC / LMCK`
-
-### 10.5. Rule theo từng họ giao dịch
-
-#### A. Direct bank payment
-
-Áp dụng khi:
-
-- Hệ thống là `expense`
-- Trong summary có `FT...`
-
-Rule:
-
-- Match exact theo `FT`
-- Sau đó kiểm tra thêm `direction`, `amount`, `date`
-- Nếu `FT` khớp thì có thể auto-match
-
-Lưu ý:
-
-- Không mở rộng rule này cho tất cả dòng `income`
-- Refund có thể tham chiếu đến `FT cũ` trong system nhưng bank lại phát sinh `FT mới`
-
-#### B. Loan
-
-Áp dụng khi thấy:
-
-- `LD...`
-- `ST...`
-- `BHD...`
-- mô tả có `Thu no goc`, `Thu no lai`, `支付银行货款`, `支付银行货款利息`
-
-Rule:
-
-- `ST` hoặc `BHD` là key chính
-- `LD` là key phụ
-- Match theo:
-  - `ST/BHD`
-  - loại dòng `gốc/lãi`
-  - `direction`
-  - `amount`
-  - `date`
-
-#### C. Cash withdrawal
-
-Áp dụng khi:
-
-- Bank `TT...` và mô tả là `RÚT TIỀN`
-- Hệ thống mô tả `取现金` hoặc `取款`
-
-Rule:
-
-- Ưu tiên `1-1` theo `amount + date`
-- Nếu không có `1-1`, cho phép `1-n` hoặc `n-1`
-- Có thể gom nhóm rút tiền cùng ngày để đối chiếu 1 dòng hệ thống
-
-#### D. Cash deposit
-
-Áp dụng khi:
-
-- Bank `TT...` và mô tả là `NỘP TIỀN`
-- Hệ thống mô tả `存钱`
-
-Rule:
-
-- Ưu tiên `1-1`
-- Nếu cần, thử thêm `gross` và `net`
-- Nếu cùng ngày có nhiều dòng nộp tiền cùng nghiệp vụ, cho phép match theo nhóm
-
-#### E. Homebanking fee
-
-Áp dụng khi:
-
-- `HB...`
-- Mô tả `Thu phí Homebanking`
-
-Rule:
-
-- Gom theo tháng / ngày
-- Hiện tại data mẫu là `8 x 110,000 = 880,000`
-- Match theo tổng nhóm, không match từng dòng riêng với từng dòng hệ thống
-
-#### F. Bank interest
-
-Áp dụng khi:
-
-- `Reference number = 19135065170012-YYYYMMDD`
-- Description chứa `Tra lai so du tren tai khoan`
-
-Rule:
-
-- Match exact theo:
-  - loại giao dịch
-  - amount
-  - ngày cuối tháng
-  - mô tả là nhóm lãi ngân hàng
-
-#### G. Salary
-
-Áp dụng khi:
-
-- Description có `PPP_...`
-- Hoặc text là `TRẢ LƯƠNG`, `工资`, `奖金`
-
-Rule:
-
-- Ưu tiên group match
-- Dùng:
-  - ngày
-  - tháng lương
-  - `PPP`
-  - tổng số tiền
-
-Cho phép:
-
-- `1 system = nhiều bank`
-- `nhiều system = 1 bank`
-- `n-n` chỉ được coi là cụm nghi vấn để rà soát, không được auto-match
-
-#### H. Customer receipt
-
-Áp dụng khi:
-
-- Thu khách hàng
-- Thu theo hóa đơn
-- Thu theo prepayment
-- Chuyển nội bộ của công ty liên quan
-
-Rule:
-
-- Không được chỉ dùng `amount + date`
-- Thứ tự ưu tiên:
-  1. tên đối tác / alias
-  2. invoice / contract / mô tả nghiệp vụ
-  3. amount
-  4. date
-- Nếu có `fee/vat`, phải thử cả `gross` và `net`
-- Cho phép `1-1`, `1-n`, `n-1`
-- Nếu xuất hiện `n-n` thì chỉ coi là cụm nghi vấn, không được auto-match
-
-#### I. Refund / adjustment
-
-Áp dụng khi:
-
-- text chứa `refund`, `hoàn trả`, `退还`, `wrong payment`, `adjustment`
-
-Rule:
-
-- Không được coi `FT cũ` là key exact duy nhất
-- Phải đối thêm:
-  - đối tác
-  - nghiệp vụ
-  - amount
-  - date
-  - bằng chứng refund
-
-#### J. Logistics / import / tax / local charge
-
-Áp dụng khi có các mã nghiệp vụ:
-
-- `PO`
-- `BL`
-- `IV`
-- `TK`
-- `contract`
-- `LTVN`
-- `YH / HN / HW / SA`
-- `HAQZH / ZGNQZH / SITGQISG / SNK / KMTCBKK / BKKCB / NSSLBKHCC / LMCK`
-
-Rule:
-
-- Đây thường là nghiệp vụ theo lô hàng / tờ khai / bill / invoice
-- Match theo `group key`, không match chỉ bằng 1 mã đơn lẻ
-- `group key` đề xuất:
-  - đối tác
-  - `PO`
-  - `BL`
-  - `invoice`
-  - `TK`
-  - ngày
-  - tổng tiền
-
-### 10.6. Rule group match
-
-Engine mới bắt buộc hỗ trợ đầy đủ:
-
-- `1-1`
-- `1-n`
-- `n-1`
-
-Ngoài ra, engine nên có khả năng phát hiện `n-n` như một cụm nghi vấn để hỗ trợ người dùng rà soát, nhưng không được tự động gắn là khớp.
-
-#### Nghĩa để hiểu
-
-- `1-1`: 1 dòng hệ thống đối 1 dòng bank
-- `1-n`: 1 dòng hệ thống đối tổng nhiều dòng bank
-- `n-1`: nhiều dòng hệ thống đối 1 dòng bank
-- `n-n`: nhiều dòng hệ thống đối nhiều dòng bank trong cùng 1 nhóm nghiệp vụ
-
-#### Nguyên tắc group match
-
-Chỉ được coi là `matched group` khi:
-
-- cùng `direction`
-- tổng tiền bằng nhau
-- ngày hợp lý
-- cùng đối tác hoặc cùng key nhóm nghiệp vụ
-- chỉ có 1 tổ hợp hợp lý rõ ràng
-
-Phạm vi áp dụng `matched group`:
-
-- chỉ áp dụng cho `1-n`
-- hoặc `n-1`
-- không áp dụng cho `n-n`
-
-Nếu có nhiều tổ hợp đều hợp lý:
-
-- để `review`
-- không ép chọn 1 tổ hợp bất kỳ
-
-Nếu phát hiện `n-n`:
-
-- không được auto-match
-- mặc định coi là `unmatched`
-- có thể lưu cờ nội bộ hoặc hiển thị hint để người dùng biết đây là cụm nghi vấn
-
-### 10.7. Rule xếp trạng thái
-
-#### Matched exact
-
-Khi:
-
-- có một cặp `1-1` rõ ràng
-- có key mạnh hoặc bằng chứng đầy đủ
-
-#### Matched group
-
-Khi:
-
-- không phải `1-1`
-- nhưng có một nhóm đối ứng duy nhất và hợp lý
-
-Giới hạn:
-
-- chỉ áp dụng cho `1-n` hoặc `n-1`
-- không áp dụng cho `n-n`
-
-UI hiện tại chưa tách riêng trạng thái này. Đề xuất:
-
-- vẫn hiển thị `matched`
-- nhưng lưu thêm `match_type = group`
-
-#### Review
-
-Khi:
-
-- có ứng viên hợp lý
-- nhưng chưa đủ bằng chứng để kết luận
-- hoặc có nhiều tổ hợp cùng hợp lý
-
-#### Unmatched
-
-Chỉ dùng khi:
-
-- đã thử hết rule hợp lệ mà vẫn không có đối ứng đúng nghiệp vụ
-
-Ngoài ra, trong bản đặc tả an toàn hiện tại:
-
-- mọi trường hợp `n-n` đều mặc định xếp vào `unmatched`
-- không được tự động hạ xuống `matched group`
-
-## 11. Triển khai để áp dụng vào source
-
-Phần này mô tả các thay đổi cần làm trong code. Không phải toàn bộ đã tồn tại trong source hiện tại.
-
-### 11.1. `app/models.py`
-
-Nên bổ sung:
-
-- `transaction_family`
-- `match_type`
-- `party_name`
-- `party_name_normalized`
-- `business_tokens`
-- `group_key`
-- `amount_gross`
-- `amount_net`
-- `evidence_flags`
-
-Ý nghĩa:
-
-- để tách `exact` và `group`
-- để lưu key mạnh / key phụ
-- để hiển thị popup giải thích rõ hơn
-
-### 11.2. `app/services/utils.py`
-
-Cần bổ sung:
-
-- bộ extractor cho:
-  - `BHD`
-  - `PPP`
-  - `PO`
-  - `BL`
-  - `IV`
-  - `TK`
-  - `contract`
-  - các mã logistics/import
-- hàm normalize tên đối tác / alias
-- hàm classify transaction family
-- hàm parse reference số học cho lãi ngân hàng
-
-Đề xuất thêm:
-
-- alias map cho tên đối tác
-- helper trích xuất invoice set
-- helper trích xuất month salary
-
-### 11.3. `app/services/excel_loader.py`
-
-Cần nâng cấp:
-
-- Loader system nên tìm đúng header row thay vì cố định dòng 1
-- Bank row nên lưu:
-  - `income_gross = credit`
-  - `income_net = credit + fee + vat`
-  - `expense_total = abs(debit) + abs(fee) + abs(vat)`
-- Trích sẵn:
-  - party name
-  - business tokens
-  - transaction family
-  - group key sơ bộ
-
-### 11.4. `app/services/reconciliation.py`
-
-Cần đổi từ engine score chung sang engine lai ghép theo lớp:
-
-#### Phase 0. Classify
-
-- Phân loại mỗi dòng vào transaction family
-
-#### Phase 1. Exact match
-
-- `FT` direct payment
-- `loan ST/BHD`
-- `TT` 1-1 rõ ràng
-- `HB`
-- `bank interest`
-
-#### Phase 2. Group match
-
-- salary
-- logistics/import/tax
-- customer receipt bị tách/gộp
-- cash withdrawal / deposit bị tách/gộp
-
-#### Phase 3. Review
-
-- giữ lại những ca mơ hồ
-- không force match
-
-#### Phase 4. Final unmatched
-
-- đánh dấu những dòng không còn đối ứng hợp lý
-
-#### Veto rules bắt buộc
-
-Không được auto-match nếu:
-
-- khác đối tác rõ ràng
-- khác invoice rõ ràng
-- khác `ST/BHD/PO/BL/contract` rõ ràng
-- khác loại nghiệp vụ rõ ràng
-
-### 11.5. `app/ui/main_window.py`
-
-Đề xuất nâng cấp:
-
-- Cho hiển thị `match_type = exact/group`
-- Thêm filter hoặc chip thống kê cho `group match`
-- Bổ sung reference filter nếu cần:
-  - `TT`
-  - `BHD`
-- Popup đối ứng nên hiển thị:
-  - transaction family
-  - match type
-  - evidence chính
-  - veto nếu có
-
-### 11.6. `app/services/exporter.py`
-
-Đề xuất bổ sung cột xuất:
+#### c. ThÃ´ng tin tráº¡ng thÃ¡i Ä‘á»‘i soÃ¡t
 
 - `status`
 - `match_type`
-- `matched_row`
+- `group_id`
+- `group_order`
 - `confidence`
 - `match_reason`
+- id Ä‘á»‘i á»©ng hoáº·c danh sÃ¡ch á»©ng viÃªn review
 
-Khi đó file xuất sẽ dùng được cho kế toán / kiểm soát xem lại mà không cần mở app.
+### 7.2. CÃ¡c vÃ²ng match hiá»‡n cÃ³ trong code
 
-### 11.7. `tests/`
+Engine hiá»‡n cháº¡y theo thá»© tá»± tá»« cháº¯c Ä‘áº¿n kÃ©m cháº¯c hÆ¡n.
 
-Cần bổ sung test cho:
+#### a. `reference`
+
+Æ¯u tiÃªn cÃ¡c trÆ°á»ng há»£p cÃ³ khÃ³a tham chiáº¿u máº¡nh.
+
+#### b. `voucher_unique`
+
+DÃ² cÃ¡c trÆ°á»ng há»£p phÃ­a há»‡ thá»‘ng cÃ³ tÃ­n hiá»‡u Ä‘á»§ riÃªng Ä‘á»ƒ ghÃ©p 1-1.
+
+#### c. `derived_unique`
+
+DÃ² báº±ng khÃ³a suy diá»…n tá»« mÃ´ táº£ hoáº·c token.
+
+#### d. `tax aggregate`
+
+Rule group riÃªng cho `PhÃ­/VAT`.
+
+ÄÃ¢y lÃ  rule group Ä‘ang cháº¯c nháº¥t trong source hiá»‡n táº¡i.
+
+#### e. `review candidate`
+
+CÃ¡c dÃ²ng chÆ°a match nhÆ°ng cÃ²n á»©ng viÃªn há»£p lÃ½ sáº½ Ä‘Æ°á»£c nÃ¢ng lÃªn `review`.
+
+### 7.3. Rule `matched exact` hiá»‡n táº¡i
+
+Má»™t dÃ²ng Ä‘Æ°á»£c gáº¯n `matched + exact` khi:
+
+- cÃ³ cáº·p Ä‘á»‘i á»©ng 1-1
+- cÃ¹ng chiá»u
+- cÃ¹ng sá»‘ tiá»n
+- qua Ä‘Æ°á»£c má»™t trong cÃ¡c vÃ²ng exact á»Ÿ trÃªn
+
+Khi Ä‘Ã³:
+
+- `status = matched`
+- `match_type = exact`
+- gáº¯n cáº·p `matched_system_id / matched_bank_id`
+
+### 7.4. Rule `matched group` hiá»‡n táº¡i
+
+Hiá»‡n táº¡i source má»›i cÃ³ group match cháº¯c cho:
+
+- `PhÃ­/VAT`
+- nhÃ³m Homebanking / phÃ­ kÃ¨m VAT
+
+MÃ´ hÃ¬nh hiá»‡n cÃ³ lÃ :
+
+- nhiá»u dÃ²ng bank
+- gá»™p vá» 1 dÃ²ng há»‡ thá»‘ng
+
+Tá»©c lÃ  báº£n cháº¥t hiá»‡n táº¡i lÃ  `1-n`, chÆ°a pháº£i engine group tá»•ng quÃ¡t.
+
+Khi match group:
+
+- `status = matched`
+- `match_type = group`
+- `group_id` Ä‘Æ°á»£c gáº¯n cho cáº£ hai phÃ­a
+
+### 7.5. Rule `review` hiá»‡n táº¡i trong code
+
+CÃ¡c dÃ²ng chÆ°a match Ä‘Æ°á»£c nÃ¢ng sang `review` náº¿u váº«n cÃ²n á»©ng viÃªn há»£p lÃ½.
+
+Äiá»u kiá»‡n review hiá»‡n táº¡i trong code xoay quanh:
+
+- cÃ¹ng chiá»u
+- cÃ¹ng sá»‘ tiá»n
+- cÃ³ Ã­t nháº¥t má»™t clue máº¡nh hÆ¡n má»©c ngáº«u nhiÃªn
+
+Clue Ä‘ang Ä‘Æ°á»£c dÃ¹ng:
+
+- cÃ³ reference token
+- hoáº·c cÃ¹ng ngÃ y
+- hoáº·c lá»‡ch ráº¥t Ã­t ngÃ y vÃ  text Ä‘á»§ gáº§n
+- hoáº·c lÃ  cáº·p gáº§n nháº¥t láº«n nhau trong táº­p á»©ng viÃªn
+
+Khi gáº¯n `review`:
+
+- row khÃ´ng Ä‘Æ°á»£c coi lÃ  matched
+- popup detail cÃ³ thá»ƒ hiá»ƒn thá»‹ danh sÃ¡ch á»©ng viÃªn Ä‘á»‘i á»©ng
+
+### 7.6. Rule `unmatched` hiá»‡n táº¡i trong code
+
+Má»™t dÃ²ng cÃ²n lÃ  `unmatched` khi:
+
+- khÃ´ng qua Ä‘Æ°á»£c exact match
+- khÃ´ng rÆ¡i vÃ o tax aggregate group
+- khÃ´ng Ä‘á»§ Ä‘iá»u kiá»‡n Ä‘á»ƒ nÃ¢ng sang `review`
+
+VÃ¬ váº­y hiá»‡n táº¡i `unmatched` váº«n Ä‘ang chá»©a 2 loáº¡i:
+
+1. tháº­t sá»± khÃ´ng cÃ³ Ä‘á»‘i á»©ng há»£p lÃ½
+2. cÃ³ kháº£ nÄƒng lÃ  ca `1-n / n-1 / n-n` nhÆ°ng engine chÆ°a giáº£i Ä‘Æ°á»£c
+
+ÄÃ¢y lÃ  lÃ½ do vÃ¬ sao `unmatched` hiá»‡n táº¡i chÆ°a hoÃ n toÃ n Ä‘á»“ng nghÄ©a vá»›i â€œkhÃ´ng cÃ³ giao dá»‹ch Ä‘á»‘i á»©ngâ€.
+
+---
+
+## 8. Káº¿t quáº£ baseline trÃªn dá»¯ liá»‡u máº«u
+
+Baseline nÃ y dÃ¹ng Ä‘á»ƒ hiá»ƒu source Ä‘ang cho ra gÃ¬ trÆ°á»›c khi sá»­a tiáº¿p nghiá»‡p vá»¥.
+
+### 8.1. Tá»•ng quan theo bá»™ dá»¯ liá»‡u
+
+| Bá»™ dá»¯ liá»‡u | System matched | System review | System unmatched | Bank matched | Bank review | Bank unmatched |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| `202512` | 735 | 44 | 16 | 742 | 43 | 12 |
+| `202601` | 502 | 48 | 10 | 509 | 48 | 8 |
+| `202602` | 333 | 54 | 7 | 340 | 53 | 7 |
+| `202603` | 387 | 19 | 4 | 394 | 19 | 14 |
+
+### 8.2. PhÃ¢n loáº¡i nhanh cÃ¡c dÃ²ng `unmatched`
+
+Khi rÃ  láº¡i cÃ¡c dÃ²ng Ä‘á» theo amount vÃ  ngÃ y, cÃ³ thá»ƒ chia thÃ nh cÃ¡c nhÃ³m:
+
+#### a. KhÃ´ng cÃ³ Ä‘á»‘i á»©ng cÃ¹ng amount
+
+ÄÃ¢y lÃ  nhÃ³m Ä‘á» tháº­t.
+
+#### b. CÃ³ cÃ¹ng amount nhÆ°ng ngÃ y lá»‡ch xa
+
+NhÃ³m nÃ y chÆ°a nÃªn match ngay.
+
+#### c. CÃ³ dáº¥u hiá»‡u lÃ  `1-n / n-1`
+
+NhÃ³m nÃ y hiá»‡n Ä‘ang Ä‘á» vÃ¬ engine chÆ°a cÃ³ group tá»•ng quÃ¡t.
+
+#### d. CÃ³ dáº¥u hiá»‡u lÃ  `n-n`
+
+NhÃ³m nÃ y cáº§n tÃ¡ch tiáº¿p thÃ nh:
+
+- `n-n` cÃ³ key riÃªng tá»«ng dÃ²ng
+- `n-n` mÆ¡ há»“ tháº­t
+
+### 8.3. CÃ¡c ca `1-n / n-1` tháº­t Ä‘Ã£ xÃ¡c nháº­n tá»« dá»¯ liá»‡u máº«u
+
+ÄÃ£ xÃ¡c nháº­n Ä‘Æ°á»£c nhiá»u ca tháº­t trong 4 bá»™ dá»¯ liá»‡u:
+
+- `202512`
+  - bank `7` ca
+  - system `4` ca
+- `202601`
+  - bank `3`
+  - system `1`
+- `202602`
+  - bank `2`
+  - system `3`
+- `202603`
+  - bank `2`
+  - system `3`
+
+VÃ­ dá»¥ cá»¥ thá»ƒ trong `202603`:
+
+- system row `79 = bank 350 + 368`
+- system row `80 = bank 349 + 369`
+- system row `336 = bank 103 + 104`
+
+Káº¿t luáº­n:
+
+- dá»¯ liá»‡u tháº­t cÃ³ `1-n`
+- dá»¯ liá»‡u tháº­t cÃ³ `n-1`
+- source hiá»‡n chÆ°a cÃ³ engine group tá»•ng quÃ¡t ngoÃ i `PhÃ­/VAT`
+
+### 8.4. CÃ¡c cá»¥m `n-n` tháº­t trong dá»¯ liá»‡u máº«u
+
+VÃ­ dá»¥ ná»•i báº­t trong `202603`:
+
+- amount `70,000,000`
+  - system `2`
+  - bank `2`
+  - nhÃ³m `MOC HOANG GIA`
+- amount `100,000,000`
+  - system `3`
+  - bank `3`
+  - láº«n `WUYI`, `LINH AN`, `PHÃš HOA`, `HOANG QUAN`
+- amount `450,000,000`
+  - system `4`
+  - bank `4`
+  - nhÃ³m `Táº¢N VIÃŠN`
+- amount `490,000,000`
+  - system `2`
+  - bank `2`
+  - mÃ´ táº£ bank ráº¥t yáº¿u
+- amount `500,000,000`
+  - system `2`
+  - bank `2`
+- amount `1,000,000,000`
+  - system `3`
+  - bank `3`
+
+CÃ¡c nhÃ³m nÃ y khÃ´ng nÃªn auto-match trong tráº¡ng thÃ¡i source hiá»‡n táº¡i.
+
+---
+
+## 9. Rule nghiá»‡p vá»¥ Ä‘Ã£ chá»‘t
+
+Pháº§n nÃ y lÃ  spec nghiá»‡p vá»¥ Ä‘Ã£ chá»‘t Ä‘á»ƒ tiáº¿p tá»¥c nÃ¢ng cáº¥p engine.
+
+### 9.1. NguyÃªn táº¯c ná»n
+
+#### a. Sao kÃª lÃ  nguá»“n chuáº©n chÃ­nh
+
+Tool Ä‘á»‘i soÃ¡t theo hai chiá»u, nhÆ°ng phÃ­a sao kÃª váº«n lÃ  nguá»“n tham chiáº¿u chÃ­nh khi Ä‘Ã¡nh giÃ¡ cÃ³ dÃ²ng phÃ¡t sinh tháº­t á»Ÿ ngÃ¢n hÃ ng.
+
+#### b. KhÃ´ng Ã©p khá»›p cho Ä‘á»§
+
+Æ¯u tiÃªn an toÃ n:
+
+- thiáº¿u báº±ng chá»©ng thÃ¬ Ä‘á»ƒ `review`
+- mÆ¡ há»“ tháº­t thÃ¬ Ä‘á»ƒ `unmatched`
+
+#### c. `NgÃ y há»‡ thá»‘ng` lÃ  tÃ­n hiá»‡u má»m
+
+Do há»‡ thá»‘ng lÃ  nháº­p tay nÃªn cÃ³ thá»ƒ phÃ¡t sinh tÃ¬nh huá»‘ng:
+
+- sao kÃª cÃ³ giao dá»‹ch hÃ´m nay
+- vÃ i ngÃ y sau ngÆ°á»i dÃ¹ng má»›i nháº­p há»‡ thá»‘ng
+
+VÃ¬ váº­y ngÃ y khÃ´ng Ä‘Æ°á»£c coi lÃ  Ä‘iá»u kiá»‡n cá»©ng.
+
+#### d. `n-n` khÃ´ng auto-match
+
+ÄÃ¢y lÃ  nguyÃªn táº¯c an toÃ n Ä‘Ã£ chá»‘t.
+
+### 9.2. Má»©c Ä‘á»™ tin cáº­y cá»§a ngÃ y giao dá»‹ch
+
+NÃªn hiá»ƒu nhÆ° sau:
+
+- cÃ¹ng ngÃ y: ráº¥t máº¡nh
+- lá»‡ch `1-3` ngÃ y: váº«n há»£p lÃ½
+- lá»‡ch `4-7` ngÃ y: chá»‰ há»£p lÃ½ náº¿u cÃ³ thÃªm clue máº¡nh
+- lá»‡ch `> 7` ngÃ y: thÆ°á»ng khÃ´ng Ä‘á»§, trá»« khi cÃ³ key cá»©ng
+
+Key máº¡nh bao gá»“m:
+
+- `FT`
+- `ST`
+- `LD`
+- invoice
+- bill
+- contract
+- key nghiá»‡p vá»¥ rÃµ trong mÃ´ táº£
+
+### 9.3. CÃ¡c loáº¡i tÃ­n hiá»‡u dÃ¹ng Ä‘á»ƒ dÃ²
+
+#### a. TÃ­n hiá»‡u cá»©ng
+
+- cÃ¹ng chiá»u
+- cÃ¹ng sá»‘ tiá»n
+- tham chiáº¿u máº¡nh
+- key nghiá»‡p vá»¥ Ä‘áº·c thÃ¹
+
+#### b. TÃ­n hiá»‡u máº¡nh
+
+- ngÃ y trÃ¹ng
+- Ä‘á»‘i tÃ¡c trÃ¹ng hoáº·c alias há»£p lá»‡
+- mÃ´ táº£ ráº¥t gáº§n
+- invoice / BL / PO / contract trÃ¹ng
+
+#### c. TÃ­n hiá»‡u má»m
+
+- ngÃ y gáº§n
+- mÃ´ táº£ gáº§n
+- cÃ¹ng nhÃ³m nghiá»‡p vá»¥
+
+### 9.4. PhÃ¢n loáº¡i giao dá»‹ch theo nghiá»‡p vá»¥
+
+ÄÃ¢y lÃ  cÃ¡ch nÃªn hiá»ƒu dá»¯ liá»‡u hiá»‡n táº¡i.
+
+#### a. `FT`
+
+ThÆ°á»ng lÃ  chuyá»ƒn khoáº£n trá»±c tiáº¿p.
+
+NhÃ³m nÃ y nÃªn Æ°u tiÃªn exact match khi:
+
+- cÃ¹ng chiá»u
+- cÃ¹ng amount
+- cÃ¹ng reference hoáº·c mÃ´ táº£ Ä‘á»§ máº¡nh
+
+#### b. `TT`
+
+ThÆ°á»ng lÃ  ná»™p/rÃºt tiá»n hoáº·c giao dá»‹ch cÃ³ mÃ´ táº£ ngáº¯n.
+
+NhÃ³m nÃ y khÃ´ng nÃªn chá»‰ dá»±a vÃ o amount, vÃ¬ mÃ´ táº£ cÃ³ thá»ƒ yáº¿u.
+
+#### c. `LD / ST`
+
+NhÃ³m vay vÃ  kháº¿ Æ°á»›c.
+
+ÄÃ¢y lÃ  nhÃ³m cÃ³ key nghiá»‡p vá»¥ tá»‘t, nÃªn Æ°u tiÃªn match báº±ng:
+
+- `ST`
+- `LD`
+- amount
+- ngÃ y
+
+#### d. `HB / PhÃ­ / VAT`
+
+ÄÃ¢y lÃ  group hiá»‡n source Ä‘ang há»— trá»£ cháº¯c.
+
+#### e. LÃ£i ngÃ¢n hÃ ng cuá»‘i thÃ¡ng
+
+ÄÃ¢y lÃ  nhÃ³m exact tá»‘t náº¿u nháº­n diá»‡n Ä‘Ãºng reference / mÃ´ táº£.
+
+#### f. LÆ°Æ¡ng
+
+Theo dá»¯ liá»‡u máº«u hiá»‡n táº¡i, lÆ°Æ¡ng chá»§ yáº¿u rÆ¡i vÃ o:
 
 - `1-n`
-- `n-1`
-- `n-n` candidate detection
-- `income net/gross`
-- `TT deposit/withdraw`
-- `PPP salary`
-- `BHD loan`
-- `veto party mismatch`
-- `veto invoice mismatch`
-- `review repeated amount groups`
+- hoáº·c `n-1`
 
-## 12. Giới hạn hiện tại của source
+ChÆ°a tháº¥y pattern `n-n` rÃµ nhÆ° nhÃ³m thu khÃ¡ch hÃ ng láº·p amount.
 
-Những điểm cần ghi rõ để tránh hiểu nhầm:
+#### g. Thu khÃ¡ch hÃ ng / cÃ´ng ná»£ / logistics láº·p amount
 
-1. Source hiện tại chủ yếu là engine `1-1`
-2. Mới có special case group cho VAT/Homebanking
-3. Chưa có engine group tổng quát cho lương, phí, doanh thu bị tách/gộp
-4. Chưa xử lý đúng ca `income gross/net`
-5. Chưa coi `19135065170012-YYYYMMDD` là key riêng
-6. Chưa đưa `PPP`, `BHD`, `PO`, `BL`, `IV`, `TK`, `contract` vào lớp nghiệp vụ
-7. Reference filter trên UI hiện chỉ có `FT/ST/SK/LD/HB`
-8. File system detect linh hoạt hơn file loader thực tế
+ÄÃ¢y lÃ  nhÃ³m dá»… phÃ¡t sinh `n-n` nháº¥t trong dá»¯ liá»‡u tháº­t.
 
-## 13. Quy trình sử dụng hiện tại
+### 9.5. Khi nÃ o lÃ  `Khá»›p`
 
-1. Chạy `main.py`
-2. Chọn file hệ thống
-3. Chọn file sao kê
-4. Bấm `Dò sao kê`
-5. Xem tổng hợp
-6. Lọc `review` / `unmatched`
-7. Mở popup đối ứng để xem căn cứ
-8. Xuất Excel theo bộ lọc hiện tại nếu cần
+#### `Khá»›p láº»`
 
-## 14. Cài đặt và chạy source
+Má»™t dÃ²ng nÃªn Ä‘Æ°á»£c tÃ­nh lÃ  `Khá»›p` khi:
 
-### Cài thư viện
+- cÃ³ Ä‘Ãºng má»™t Ä‘á»‘i á»©ng 1-1 rÃµ rÃ ng
+- cÃ¹ng chiá»u
+- cÃ¹ng sá»‘ tiá»n
+- ngÃ y há»£p lÃ½
+- cÃ³ thÃªm báº±ng chá»©ng há»— trá»£ Ä‘á»§ cháº¯c
 
-```powershell
-python -m pip install -r requirements.txt
-```
+VÃ­ dá»¥:
 
-### Chạy source
+- `FT` chi trá»±c tiáº¿p
+- `LD/ST` cÃ³ Ä‘á»‘i á»©ng rÃµ
+- `TT` cÃ³ cáº·p rÃµ
+- lÃ£i ngÃ¢n hÃ ng cuá»‘i thÃ¡ng
 
-```powershell
+#### `PhÃ­/VAT Ä‘Ã£ khá»›p`
+
+Má»™t nhÃ³m nÃªn Ä‘Æ°á»£c tÃ­nh lÃ  `Khá»›p` khi:
+
+- nhiá»u dÃ²ng bank phÃ­/VAT
+- tá»•ng Ä‘Ãºng báº±ng má»™t dÃ²ng há»‡ thá»‘ng
+- tá»• há»£p lÃ  duy nháº¥t
+- nhÃ³m nÃ y Ä‘Ãºng nghiá»‡p vá»¥
+
+Hiá»‡n táº¡i Ä‘Ã¢y lÃ  group match duy nháº¥t Ä‘Ã£ Ä‘Æ°á»£c source há»— trá»£ cháº¯c.
+
+#### `Khá»›p group` tá»•ng quÃ¡t trong tÆ°Æ¡ng lai
+
+Vá» nghiá»‡p vá»¥, `1-n / n-1` cÃ³ thá»ƒ Ä‘Æ°á»£c nÃ¢ng lÃªn `matched group` náº¿u:
+
+- tá»• há»£p lÃ  duy nháº¥t
+- tá»•ng tiá»n khá»›p tuyá»‡t Ä‘á»‘i
+- cÃ¹ng chiá»u
+- ngÃ y há»£p lÃ½
+- cÃ³ thÃªm clue Ä‘á»§ máº¡nh
+
+### 9.6. Khi nÃ o lÃ  `Cáº§n kiá»ƒm tra`
+
+`review` lÃ  tráº¡ng thÃ¡i:
+
+- cÃ³ á»©ng viÃªn há»£p lÃ½
+- nhÆ°ng chÆ°a Ä‘á»§ cháº¯c Ä‘á»ƒ auto-match
+
+Má»™t dÃ²ng nÃªn lÃ  `review` khi:
+
+- cÃ¹ng chiá»u
+- cÃ¹ng sá»‘ tiá»n
+- cÃ¹ng ngÃ y hoáº·c ngÃ y gáº§n
+- mÃ´ táº£ / Ä‘á»‘i tÃ¡c / reference cÃ³ liÃªn quan
+- nhÆ°ng cÃ²n hÆ¡n má»™t kháº£ nÄƒng
+- hoáº·c cÃ³ clue chÆ°a Ä‘á»§ máº¡nh Ä‘á»ƒ chá»‘t 1-1
+
+#### Rule ráº¥t quan trá»ng
+
+Náº¿u cÃ³ á»©ng viÃªn há»£p lÃ½ thÃ¬ khÃ´ng nÃªn Ä‘áº©y xuá»‘ng `unmatched` quÃ¡ sá»›m.
+
+### 9.7. Khi nÃ o lÃ  `ChÆ°a khá»›p`
+
+`unmatched` chá»‰ nÃªn dÃ¹ng khi:
+
+- khÃ´ng cÃ³ á»©ng viÃªn cÃ¹ng chiá»u vÃ  amount Ä‘á»§ há»£p lÃ½
+- hoáº·c ngÃ y lá»‡ch xa, khÃ´ng cÃ³ clue máº¡nh
+- hoáº·c lÃ  `n-n` mÆ¡ há»“ tháº­t
+- hoáº·c lÃ  ca group mÃ  chÆ°a tÃ¬m ra tá»• há»£p Ä‘á»§ cháº¯c
+
+### 9.8. Quy táº¯c `1-n / n-1 / n-n`
+
+#### `1-n`
+
+Cho phÃ©p lÃªn `matched group` náº¿u:
+
+- má»™t dÃ²ng phÃ­a A
+- nhiá»u dÃ²ng phÃ­a B
+- tá»•ng tiá»n khá»›p tuyá»‡t Ä‘á»‘i
+- tá»• há»£p lÃ  duy nháº¥t
+- cÃ³ thÃªm báº±ng chá»©ng vá» Ä‘á»‘i tÃ¡c / mÃ´ táº£ / key nghiá»‡p vá»¥
+
+#### `n-1`
+
+TÆ°Æ¡ng tá»± `1-n`.
+
+#### `n-n`
+
+KhÃ´ng auto-match.
+
+##### `n-n` cÃ³ key riÃªng tá»«ng dÃ²ng
+
+VÃ­ dá»¥:
+
+- invoice riÃªng
+- BL riÃªng
+- PO riÃªng
+- contract riÃªng
+- mÃ´ táº£ vÃ  Ä‘á»‘i tÃ¡c Ä‘á»§ tÃ¡ch dÃ²ng
+
+TrÆ°á»ng há»£p nÃ y nÃªn lÃ :
+
+- `review`
+
+##### `n-n` mÆ¡ há»“ tháº­t
+
+TrÆ°á»ng há»£p:
+
+- sá»‘ dÃ²ng báº±ng nhau
+- amount báº±ng nhau
+- nhÆ°ng khÃ´ng cÃ³ khÃ³a Ä‘á»§ cháº¯c Ä‘á»ƒ map 1-1
+
+TrÆ°á»ng há»£p nÃ y nÃªn lÃ :
+
+- `unmatched`
+
+### 9.9. Thuáº¿ vÃ  lÆ°Æ¡ng cÃ³ pháº£i `n-n` khÃ´ng
+
+Theo dá»¯ liá»‡u máº«u hiá»‡n táº¡i:
+
+- `PhÃ­/VAT` lÃ  `1-n`, khÃ´ng pháº£i `n-n`
+- `lÆ°Æ¡ng` chá»§ yáº¿u lÃ  `1-n` hoáº·c `n-1`
+- `n-n` xuáº¥t hiá»‡n nhiá»u hÆ¡n á»Ÿ:
+  - thu khÃ¡ch hÃ ng
+  - cÃ´ng ná»£ láº·p amount
+  - má»™t sá»‘ nhÃ³m logistics / chi phÃ­ láº·p dÃ²ng
+
+### 9.10. Báº£ng quyáº¿t Ä‘á»‹nh tráº¡ng thÃ¡i
+
+#### a. `Khá»›p`
+
+Gáº¯n `Khá»›p` khi:
+
+- exact 1-1 rÃµ rÃ ng
+- hoáº·c group `1-n / n-1` Ä‘á»§ cháº¯c
+
+#### b. `Cáº§n kiá»ƒm tra`
+
+Gáº¯n `Cáº§n kiá»ƒm tra` khi:
+
+- cÃ³ á»©ng viÃªn há»£p lÃ½
+- nhÆ°ng cÃ²n mÆ¡ há»“
+- hoáº·c lÃ  `n-n` cÃ³ thá»ƒ giáº£i báº±ng key riÃªng
+
+#### c. `ChÆ°a khá»›p`
+
+Gáº¯n `ChÆ°a khá»›p` khi:
+
+- khÃ´ng cÃ³ á»©ng viÃªn há»£p lÃ½
+- hoáº·c lÃ  `n-n` mÆ¡ há»“ tháº­t
+
+---
+
+## 10. Dá»¯ liá»‡u nÃ o Ä‘Æ°á»£c tÃ­nh lÃ  `Khá»›p`, `Review`, `ChÆ°a khá»›p`
+
+ÄÃ¢y lÃ  cÃ¡ch hiá»ƒu trá»±c quan Ä‘á»ƒ dÃ¹ng khi kiá»ƒm tra nghiá»‡p vá»¥.
+
+### 10.1. Dá»¯ liá»‡u Ä‘Æ°á»£c tÃ­nh lÃ  `Khá»›p`
+
+#### a. `Khá»›p láº»`
+
+Gá»“m cÃ¡c trÆ°á»ng há»£p:
+
+- há»‡ thá»‘ng vÃ  bank cÃ³ cáº·p 1-1 rÃµ rÃ ng
+- cÃ¹ng chiá»u
+- cÃ¹ng sá»‘ tiá»n
+- ngÃ y phÃ¹ há»£p
+- cÃ³ thÃªm báº±ng chá»©ng máº¡nh
+
+CÃ¡c nhÃ³m Ä‘ang cÃ³ xÃ¡c suáº¥t Ä‘Ãºng cao:
+
+- `FT` chi trá»±c tiáº¿p
+- `LD/ST` cÃ³ Ä‘á»‘i á»©ng rÃµ
+- `TT` cÃ³ cáº·p rÃµ
+- lÃ£i ngÃ¢n hÃ ng cuá»‘i thÃ¡ng
+
+#### b. `PhÃ­/VAT Ä‘Ã£ khá»›p`
+
+Gá»“m cÃ¡c trÆ°á»ng há»£p:
+
+- nhiá»u dÃ²ng bank phÃ­/VAT
+- tá»•ng báº±ng má»™t dÃ²ng há»‡ thá»‘ng
+- tá»• há»£p duy nháº¥t
+
+### 10.2. Dá»¯ liá»‡u Ä‘Æ°á»£c tÃ­nh lÃ  `Cáº§n kiá»ƒm tra`
+
+Gá»“m cÃ¡c trÆ°á»ng há»£p:
+
+- cÃ¹ng chiá»u
+- cÃ¹ng sá»‘ tiá»n
+- cÃ¹ng ngÃ y hoáº·c ngÃ y gáº§n
+- cÃ³ Ä‘á»‘i tÃ¡c hoáº·c mÃ´ táº£ hoáº·c reference liÃªn quan
+- nhÆ°ng chÆ°a Ä‘á»§ cháº¯c
+
+ThÆ°á»ng rÆ¡i vÃ o:
+
+- nhiá»u á»©ng viÃªn cÃ¹ng amount
+- mÃ´ táº£ gáº§n Ä‘Ãºng nhÆ°ng chÆ°a khÃ³a Ä‘Æ°á»£c 1-1
+- `n-n` cÃ³ thá»ƒ phÃ¢n rÃ£ náº¿u trÃ­ch thÃªm key
+
+### 10.3. Dá»¯ liá»‡u Ä‘Æ°á»£c tÃ­nh lÃ  `ChÆ°a khá»›p`
+
+Gá»“m cÃ¡c trÆ°á»ng há»£p:
+
+- khÃ´ng cÃ³ Ä‘á»‘i á»©ng cÃ¹ng amount
+- khÃ¡c chiá»u
+- cÃ¹ng amount nhÆ°ng ngÃ y lá»‡ch xa vÃ  khÃ´ng cÃ³ clue máº¡nh
+- `1-n / n-1` mÃ  engine chÆ°a tÃ¬m Ä‘Æ°á»£c tá»• há»£p
+- `n-n` mÆ¡ há»“ tháº­t
+
+---
+
+## 11. Nhá»¯ng gÃ¬ source hiá»‡n táº¡i lÃ m Ä‘Ãºng
+
+- Ä‘á»c Ä‘Æ°á»£c file máº«u tháº­t
+- detector loáº¡i file hoáº¡t Ä‘á»™ng Ä‘Ãºng trÃªn cÃ¡c bá»™ máº«u
+- scan flow Ä‘Ã£ á»•n Ä‘á»‹nh láº¡i sau refactor
+- cáº­p nháº­t UI cháº¡y trÃªn Ä‘Ãºng GUI thread
+- khÃ´ng cÃ²n regression `QObject different thread` trong luá»“ng scan chuáº©n
+- `PhÃ­/VAT` Ä‘Ã£ cÃ³ group match riÃªng
+- popup detail Ä‘Ã£ hiá»ƒn thá»‹ Ä‘Æ°á»£c cáº·p/group/review candidate
+- UI Ä‘Ã£ tÃ¡ch nhá» Ä‘Ã¡ng ká»ƒ so vá»›i phiÃªn báº£n ban Ä‘áº§u
+
+---
+
+## 12. Háº¡n cháº¿ hiá»‡n táº¡i
+
+### 12.1. Engine group cÃ²n háº¹p
+
+Hiá»‡n source má»›i há»— trá»£ cháº¯c `group match` cho `PhÃ­/VAT`.
+
+ChÆ°a cÃ³ engine tá»•ng quÃ¡t cho:
+
+- lÆ°Æ¡ng
+- thÆ°á»Ÿng
+- cÃ¡c khoáº£n bá»‹ tÃ¡ch 1-2, 2-1
+- cÃ¡c cá»¥m chi phÃ­ hoáº·c doanh thu bá»‹ chia/gá»™p khÃ¡c
+
+### 12.2. `review / unmatched` váº«n cáº§n tinh chá»‰nh
+
+Hiá»‡n táº¡i váº«n cÃ²n cÃ¡c case:
+
+- cÃ¹ng tiá»n
+- cÃ¹ng ngÃ y hoáº·c ngÃ y gáº§n
+- cÃ³ thÃªm clue
+
+nhÆ°ng source váº«n cÃ³ thá»ƒ Ä‘á»ƒ `unmatched` náº¿u chÆ°a Ä‘á»§ rule nÃ¢ng sang `review`.
+
+### 12.3. `n-n` chÆ°a Ä‘Æ°á»£c phÃ¢n loáº¡i sÃ¢u
+
+ChÆ°a cÃ³ cÆ¡ cháº¿ tá»•ng quÃ¡t Ä‘á»ƒ tÃ¡ch:
+
+- `n-n` cÃ³ thá»ƒ giáº£i báº±ng key riÃªng tá»«ng dÃ²ng
+- `n-n` mÆ¡ há»“ tháº­t
+
+### 12.4. Rule exact theo tá»«ng nhÃ³m nghiá»‡p vá»¥ cáº§n rÃ  ká»¹ hÆ¡n
+
+CÃ¡c family cáº§n audit tiáº¿p:
+
+- `FT`
+- `TT`
+- `LD/ST`
+- `HB`
+- lÃ£i ngÃ¢n hÃ ng
+
+### 12.5. Dá»¯ liá»‡u phá»¥ trá»£ chÆ°a Ä‘á»§ phong phÃº
+
+Hiá»‡n source váº«n cÃ²n thiáº¿u á»Ÿ má»™t sá»‘ Ä‘iá»ƒm:
+
+- alias tÃªn Ä‘á»‘i tÃ¡c
+- invoice / BL / PO / contract extractor Ä‘áº§y Ä‘á»§
+- má»™t sá»‘ key phá»¥ nhÆ° `PPP`, `BHD`
+- xá»­ lÃ½ gross / net á»Ÿ cÃ¡c case thu cÃ³ phÃ­
+
+---
+
+## 13. Backlog ká»¹ thuáº­t vÃ  nghiá»‡p vá»¥ tiáº¿p theo
+
+### 13.1. Æ¯u tiÃªn sá»‘ 1: tinh chá»‰nh `review / unmatched`
+
+Má»¥c tiÃªu:
+
+- nhá»¯ng case cÃ³ á»©ng viÃªn há»£p lÃ½ khÃ´ng bá»‹ Ä‘á» quÃ¡ tay
+- nhÆ°ng váº«n khÃ´ng auto-match bá»«a
+
+### 13.2. Æ¯u tiÃªn sá»‘ 2: lÃ m `group match` tá»•ng quÃ¡t cho `1-n / n-1`
+
+Æ¯u tiÃªn cÃ¡c ca rÃµ nháº¥t:
+
+- lÆ°Æ¡ng
+- thÆ°á»Ÿng
+- cÃ¡c khoáº£n tÃ¡ch dÃ²ng nhÆ°ng tá»•ng tiá»n vÃ  ngÃ y ráº¥t rÃµ
+
+### 13.3. Æ¯u tiÃªn sá»‘ 3: audit exact rule theo tá»«ng nhÃ³m giao dá»‹ch
+
+- `FT`
+- `TT`
+- `LD/ST`
+- `HB`
+- lÃ£i cuá»‘i thÃ¡ng
+
+### 13.4. Æ¯u tiÃªn sá»‘ 4: tÄƒng dá»¯ liá»‡u phá»¥ trá»£
+
+- trÃ­ch thÃªm key tá»« text
+- alias tÃªn Ä‘á»‘i tÃ¡c
+- invoice / BL / PO / contract
+- gross / net cho má»™t sá»‘ case thu cÃ³ phÃ­
+
+### 13.5. Æ¯u tiÃªn sá»‘ 5: khÃ³a báº±ng test
+
+Cáº§n bá»• sung test cho:
+
+- `same amount + near date -> review`
+- `direction mismatch -> unmatched`
+- `1-n / n-1`
+- `n-n khÃ´ng auto-match`
+- `n-n cÃ³ key riÃªng -> review`
+- exact rule cho tá»«ng family
+
+---
+
+## 14. Kiáº¿n trÃºc UI hiá»‡n táº¡i
+
+Pháº§n UI hiá»‡n Ä‘Ã£ Ä‘Æ°á»£c tÃ¡ch theo hÆ°á»›ng dá»… báº£o trÃ¬ hÆ¡n.
+
+### 14.1. Kiáº¿n trÃºc chÃ­nh
+
+- `MainWindow`
+  - chá»‰ Ä‘iá»u phá»‘i
+- `page + mixin + component`
+
+### 14.2. MÃ n hÃ¬nh
+
+- `StartupPage`
+  - chá»‰ chá»n file vÃ  báº¯t Ä‘áº§u dÃ²
+- `ResultsPage`
+  - hiá»ƒn thá»‹ metadata, filter, action, grid
+
+### 14.3. Mixin
+
+- `main_window_scan_mixin.py`
+  - chá»n file, cháº¡y scan, bind result, chuyá»ƒn page
+- `main_window_filter_mixin.py`
+  - filter/search/summary
+- `main_window_actions_mixin.py`
+  - history/export/detail dialog
+
+### 14.4. Component
+
+- chip/button riÃªng
+- panel riÃªng
+- dialog riÃªng
+- style riÃªng
+- metadata layout riÃªng
+
+Má»¥c tiÃªu cá»§a kiáº¿n trÃºc hiá»‡n táº¡i:
+
+- trÃ¡nh dá»“n toÃ n bá»™ UI vÃ o má»™t file ráº¥t lá»›n
+- dá»… chá»‰nh sá»­a tá»«ng cá»¥m giao diá»‡n
+- giáº£m rá»§i ro style Ä‘Ã¨ láº«n nhau
+
+---
+
+## 15. Kiá»ƒm thá»­ hiá»‡n cÃ³
+
+### 15.1. Test logic Ä‘á»‘i soÃ¡t
+
+`tests/test_reconciliation_logic.py`
+
+Bao phá»§:
+
+- exact match
+- VAT/Homebanking group
+- review
+- unmatched
+- má»™t sá»‘ regression nghiá»‡p vá»¥ Ä‘Ã£ sá»­a
+
+### 15.2. Test scan flow UI
+
+`tests/test_main_window_scan_flow.py`
+
+Bao phá»§:
+
+- startup page compact
+- scan success -> results page
+- scan fail -> quay láº¡i startup
+- queued connection
+- filter loading khÃ´ng Ä‘Ã¨ scan overlay
+
+### 15.3. Test detector file
+
+`tests/test_excel_file_kind.py`
+
+Bao phá»§ detector trÃªn dá»¯ liá»‡u tháº­t trong repo.
+
+---
+
+## 16. CÃ¡ch cháº¡y source
+
+### 16.1. Cháº¡y app
+
+```bash
 python main.py
 ```
 
-## 15. Build file exe
+### 16.2. Cháº¡y test
 
-Script build hiện tại:
-
-```powershell
-.\build_exe.bat
+```bash
+python -m unittest tests.test_reconciliation_logic tests.test_main_window_scan_flow tests.test_excel_file_kind
 ```
 
-Script sẽ:
+### 16.3. Kiá»ƒm tra compile
 
-- bật UTF-8
-- cài dependencies
-- tạo icon từ `logo\logo.png`
-- build PyInstaller onefile windowed
-
-File output:
-
-```text
-dist\BSRv1.0.exe
+```bash
+python -m compileall app tests
 ```
 
-## 16. Khuyến nghị chốt nghiệp vụ trước khi sửa code
+### 16.4. Build `.exe`
 
-Cần chốt bằng văn bản 4 điểm sau:
+```bash
+build_exe.bat
+```
 
-1. Có dùng `matched group` nội bộ hay không
-2. Những transaction family nào sẽ được support ở phase 1
-3. Key nào là `key mạnh`, key nào là `key phụ`
-4. Veto rules nào là bắt buộc
+---
 
-Nếu chốt xong 4 điểm này, việc sửa code sẽ an toàn hơn rất nhiều và tránh ghép sai giao dịch liên quan đến tiền.
+## 17. Káº¿t luáº­n hiá»‡n tráº¡ng
 
-## 17. Tóm tắt ngắn gọn
+TÃ­nh Ä‘áº¿n thá»i Ä‘iá»ƒm cáº­p nháº­t README nÃ y:
 
-Tình hình hiện tại:
+- kiáº¿n trÃºc UI Ä‘Ã£ Ä‘Æ°á»£c refactor Ä‘á»§ sáº¡ch Ä‘á»ƒ tiáº¿p tá»¥c phÃ¡t triá»ƒn
+- scan flow vÃ  luá»“ng thread Ä‘Ã£ Ä‘Æ°á»£c khÃ´i phá»¥c á»•n Ä‘á»‹nh
+- detector file máº«u Ä‘Ã£ Ä‘Æ°á»£c khÃ³a báº±ng test
+- source hiá»‡n Ä‘á»‘i soÃ¡t á»•n cho nhiá»u ca 1-1 vÃ  `PhÃ­/VAT`
+- pháº§n cÃ²n cáº§n lÃ m tiáº¿p lÃ  hoÃ n thiá»‡n logic nghiá»‡p vá»¥ cho:
+  - `review / unmatched`
+  - `1-n / n-1`
+  - exact rule theo tá»«ng nhÃ³m giao dá»‹ch
 
-- Source đã có UI, loader, export, history, logging, đa ngôn ngữ
-- Engine hiện tại làm tốt `FT chi`, `loan ST`, `TT`, `HB`, `lãi ngân hàng`
-- Engine hiện tại chưa đủ cho `1-n`, `n-1`, phát hiện `n-n` an toàn, `income gross/net`, và các nghiệp vụ logistics/import/salary/thu khách bị tách-gộp
+NÃ³i ngáº¯n gá»n:
 
-Spec nghiệp vụ đề xuất:
+- **kiáº¿n trÃºc hiá»‡n táº¡i Ä‘Ã£ Ä‘á»§ tá»‘t Ä‘á»ƒ phÃ¡t triá»ƒn tiáº¿p**
+- **Æ°u tiÃªn tiáº¿p theo lÃ  quay láº¡i hoÃ n thiá»‡n engine dÃ² nghiá»‡p vá»¥**
 
-- Có mã mạnh thì match exact
-- Không có mã mạnh thì match theo transaction family và group key
-- Có 1 tổ hợp rõ ràng thì `matched`
-- Có nhiều tổ hợp hợp lý thì `review`
-- Nếu là `n-n` thì không auto-match, mặc định `unmatched`
-- Thử hết rule mà vẫn không có đối ứng đúng nghiệp vụ thì `unmatched`
-
-README này được viết để làm tài liệu tham chiếu cho:
-
-- Người vận hành tool
-- Người review nghiệp vụ
-- Người sửa source
