@@ -1,0 +1,140 @@
+[Fri 04/03/2026 10:44:40.51] Bat dau build exe tai C:\Users\tandat\Desktop\Tools\ToolSaoKe
+[Fri 04/03/2026 10:44:40.60] Su dung Python: C:\Users\tandat\AppData\Local\Programs\Python\Python313\python.exe
+
+[Fri 04/03/2026 10:44:40.62] RUN "C:\Users\tandat\AppData\Local\Programs\Python\Python313\python.exe" -m pip install -r requirements.txt
+Requirement already satisfied: PySide6>=6.11.0 in c:\users\tandat\appdata\local\programs\python\python313\lib\site-packages (from -r requirements.txt (line 1)) (6.11.0)
+Requirement already satisfied: openpyxl>=3.1.5 in c:\users\tandat\appdata\local\programs\python\python313\lib\site-packages (from -r requirements.txt (line 2)) (3.1.5)
+Requirement already satisfied: xlrd>=2.0.2 in c:\users\tandat\appdata\local\programs\python\python313\lib\site-packages (from -r requirements.txt (line 3)) (2.0.2)
+Requirement already satisfied: pyinstaller>=6.15.0 in c:\users\tandat\appdata\local\programs\python\python313\lib\site-packages (from -r requirements.txt (line 4)) (6.16.0)
+Requirement already satisfied: shiboken6==6.11.0 in c:\users\tandat\appdata\local\programs\python\python313\lib\site-packages (from PySide6>=6.11.0->-r requirements.txt (line 1)) (6.11.0)
+Requirement already satisfied: PySide6_Essentials==6.11.0 in c:\users\tandat\appdata\local\programs\python\python313\lib\site-packages (from PySide6>=6.11.0->-r requirements.txt (line 1)) (6.11.0)
+Requirement already satisfied: PySide6_Addons==6.11.0 in c:\users\tandat\appdata\local\programs\python\python313\lib\site-packages (from PySide6>=6.11.0->-r requirements.txt (line 1)) (6.11.0)
+Requirement already satisfied: et-xmlfile in c:\users\tandat\appdata\local\programs\python\python313\lib\site-packages (from openpyxl>=3.1.5->-r requirements.txt (line 2)) (2.0.0)
+Requirement already satisfied: altgraph in c:\users\tandat\appdata\local\programs\python\python313\lib\site-packages (from pyinstaller>=6.15.0->-r requirements.txt (line 4)) (0.17.4)
+Requirement already satisfied: packaging>=22.0 in c:\users\tandat\appdata\local\programs\python\python313\lib\site-packages (from pyinstaller>=6.15.0->-r requirements.txt (line 4)) (25.0)
+Requirement already satisfied: pefile!=2024.8.26,>=2022.5.30 in c:\users\tandat\appdata\local\programs\python\python313\lib\site-packages (from pyinstaller>=6.15.0->-r requirements.txt (line 4)) (2023.2.7)
+Requirement already satisfied: pyinstaller-hooks-contrib>=2025.8 in c:\users\tandat\appdata\local\programs\python\python313\lib\site-packages (from pyinstaller>=6.15.0->-r requirements.txt (line 4)) (2025.9)
+Requirement already satisfied: pywin32-ctypes>=0.2.1 in c:\users\tandat\appdata\local\programs\python\python313\lib\site-packages (from pyinstaller>=6.15.0->-r requirements.txt (line 4)) (0.2.3)
+Requirement already satisfied: setuptools>=42.0.0 in c:\users\tandat\appdata\local\programs\python\python313\lib\site-packages (from pyinstaller>=6.15.0->-r requirements.txt (line 4)) (80.9.0)
+
+[notice] A new release of pip is available: 25.2 -> 26.0.1
+[notice] To update, run: python.exe -m pip install --upgrade pip
+[Fri 04/03/2026 10:44:42.60] OK
+
+[Fri 04/03/2026 10:44:42.61] RUN "C:\Users\tandat\AppData\Local\Programs\Python\Python313\python.exe" -c "from pathlib import Path; from PySide6.QtGui import QImage; src = Path(r'C:\Users\tandat\Desktop\Tools\ToolSaoKe') / r'logo\logo.png'; dst = Path(r'C:\Users\tandat\Desktop\Tools\ToolSaoKe') / r'logo\logo.ico'; image = QImage(str(src)); raise SystemExit(0 if (not image.isNull() and image.save(str(dst))) else 1)"
+[Fri 04/03/2026 10:44:42.91] OK
+
+[Fri 04/03/2026 10:44:42.91] RUN "C:\Users\tandat\AppData\Local\Programs\Python\Python313\python.exe" -m PyInstaller --noconfirm --onefile --windowed --name BSRv1.0 --clean --icon "logo\logo.ico" --add-data "logo;logo" main.py
+337 INFO: PyInstaller: 6.16.0, contrib hooks: 2025.9
+337 INFO: Python: 3.13.7
+397 INFO: Platform: Windows-11-10.0.22631-SP0
+398 INFO: Python environment: C:\Users\tandat\AppData\Local\Programs\Python\Python313
+399 INFO: wrote C:\Users\tandat\Desktop\Tools\ToolSaoKe\BSRv1.0.spec
+401 INFO: Removing temporary files and cleaning cache in C:\Users\tandat\AppData\Local\pyinstaller
+404 INFO: Module search paths (PYTHONPATH):
+['C:\\Users\\tandat\\Desktop\\Tools\\ToolSaoKe',
+ 'C:\\Users\\tandat\\AppData\\Local\\Programs\\Python\\Python313\\python313.zip',
+ 'C:\\Users\\tandat\\AppData\\Local\\Programs\\Python\\Python313\\DLLs',
+ 'C:\\Users\\tandat\\AppData\\Local\\Programs\\Python\\Python313\\Lib',
+ 'C:\\Users\\tandat\\AppData\\Local\\Programs\\Python\\Python313',
+ 'C:\\Users\\tandat\\AppData\\Local\\Programs\\Python\\Python313\\Lib\\site-packages',
+ 'C:\\Users\\tandat\\AppData\\Local\\Programs\\Python\\Python313\\Lib\\site-packages\\setuptools\\_vendor',
+ 'C:\\Users\\tandat\\Desktop\\Tools\\ToolSaoKe']
+1148 INFO: Appending 'datas' from .spec
+1149 INFO: checking Analysis
+1149 INFO: Building Analysis because Analysis-00.toc is non existent
+1149 INFO: Looking for Python shared library...
+1149 INFO: Using Python shared library: C:\Users\tandat\AppData\Local\Programs\Python\Python313\python313.dll
+1149 INFO: Running Analysis Analysis-00.toc
+1149 INFO: Target bytecode optimization level: 0
+1149 INFO: Initializing module dependency graph...
+1150 INFO: Initializing module graph hook caches...
+1179 INFO: Analyzing modules for base_library.zip ...
+2893 INFO: Processing standard module hook 'hook-encodings.py' from 'C:\\Users\\tandat\\AppData\\Local\\Programs\\Python\\Python313\\Lib\\site-packages\\PyInstaller\\hooks'
+4092 INFO: Processing standard module hook 'hook-heapq.py' from 'C:\\Users\\tandat\\AppData\\Local\\Programs\\Python\\Python313\\Lib\\site-packages\\PyInstaller\\hooks'
+7712 INFO: Processing standard module hook 'hook-pickle.py' from 'C:\\Users\\tandat\\AppData\\Local\\Programs\\Python\\Python313\\Lib\\site-packages\\PyInstaller\\hooks'
+10293 INFO: Caching module dependency graph...
+10352 INFO: Analyzing C:\Users\tandat\Desktop\Tools\ToolSaoKe\main.py
+10364 INFO: Processing standard module hook 'hook-PySide6.py' from 'C:\\Users\\tandat\\AppData\\Local\\Programs\\Python\\Python313\\Lib\\site-packages\\PyInstaller\\hooks'
+10612 INFO: Processing standard module hook 'hook-shiboken6.py' from 'C:\\Users\\tandat\\AppData\\Local\\Programs\\Python\\Python313\\Lib\\site-packages\\PyInstaller\\hooks'
+10851 INFO: Processing standard module hook 'hook-PySide6.QtNetwork.py' from 'C:\\Users\\tandat\\AppData\\Local\\Programs\\Python\\Python313\\Lib\\site-packages\\PyInstaller\\hooks'
+12346 INFO: Processing standard module hook 'hook-PySide6.QtCore.py' from 'C:\\Users\\tandat\\AppData\\Local\\Programs\\Python\\Python313\\Lib\\site-packages\\PyInstaller\\hooks'
+13932 INFO: Processing standard module hook 'hook-PySide6.QtGui.py' from 'C:\\Users\\tandat\\AppData\\Local\\Programs\\Python\\Python313\\Lib\\site-packages\\PyInstaller\\hooks'
+15650 INFO: Processing standard module hook 'hook-PySide6.QtWidgets.py' from 'C:\\Users\\tandat\\AppData\\Local\\Programs\\Python\\Python313\\Lib\\site-packages\\PyInstaller\\hooks'
+15963 INFO: Processing standard module hook 'hook-sqlite3.py' from 'C:\\Users\\tandat\\AppData\\Local\\Programs\\Python\\Python313\\Lib\\site-packages\\PyInstaller\\hooks'
+16509 INFO: Processing standard module hook 'hook-openpyxl.py' from 'C:\\Users\\tandat\\AppData\\Local\\Programs\\Python\\Python313\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+16656 INFO: Processing standard module hook 'hook-numpy.py' from 'C:\\Users\\tandat\\AppData\\Local\\Programs\\Python\\Python313\\Lib\\site-packages\\PyInstaller\\hooks'
+17507 INFO: Processing standard module hook 'hook-difflib.py' from 'C:\\Users\\tandat\\AppData\\Local\\Programs\\Python\\Python313\\Lib\\site-packages\\PyInstaller\\hooks'
+17865 INFO: Processing standard module hook 'hook-multiprocessing.util.py' from 'C:\\Users\\tandat\\AppData\\Local\\Programs\\Python\\Python313\\Lib\\site-packages\\PyInstaller\\hooks'
+18109 INFO: Processing standard module hook 'hook-xml.py' from 'C:\\Users\\tandat\\AppData\\Local\\Programs\\Python\\Python313\\Lib\\site-packages\\PyInstaller\\hooks'
+18500 INFO: Processing standard module hook 'hook-_ctypes.py' from 'C:\\Users\\tandat\\AppData\\Local\\Programs\\Python\\Python313\\Lib\\site-packages\\PyInstaller\\hooks'
+19606 INFO: Processing standard module hook 'hook-sysconfig.py' from 'C:\\Users\\tandat\\AppData\\Local\\Programs\\Python\\Python313\\Lib\\site-packages\\PyInstaller\\hooks'
+19732 INFO: Processing standard module hook 'hook-platform.py' from 'C:\\Users\\tandat\\AppData\\Local\\Programs\\Python\\Python313\\Lib\\site-packages\\PyInstaller\\hooks'
+21581 INFO: Processing pre-safe-import-module hook 'hook-typing_extensions.py' from 'C:\\Users\\tandat\\AppData\\Local\\Programs\\Python\\Python313\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
+21584 INFO: SetuptoolsInfo: initializing cached setuptools info...
+26355 INFO: Setuptools: 'typing_extensions' appears to be a setuptools-vendored copy - creating alias to 'setuptools._vendor.typing_extensions'!
+26363 INFO: Processing standard module hook 'hook-setuptools.py' from 'C:\\Users\\tandat\\AppData\\Local\\Programs\\Python\\Python313\\Lib\\site-packages\\PyInstaller\\hooks'
+26380 INFO: Processing pre-safe-import-module hook 'hook-distutils.py' from 'C:\\Users\\tandat\\AppData\\Local\\Programs\\Python\\Python313\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
+26420 INFO: Processing pre-safe-import-module hook 'hook-jaraco.functools.py' from 'C:\\Users\\tandat\\AppData\\Local\\Programs\\Python\\Python313\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
+26421 INFO: Setuptools: 'jaraco.functools' appears to be a setuptools-vendored copy - creating alias to 'setuptools._vendor.jaraco.functools'!
+26435 INFO: Processing pre-safe-import-module hook 'hook-more_itertools.py' from 'C:\\Users\\tandat\\AppData\\Local\\Programs\\Python\\Python313\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
+26436 INFO: Setuptools: 'more_itertools' appears to be a setuptools-vendored copy - creating alias to 'setuptools._vendor.more_itertools'!
+26717 INFO: Processing pre-safe-import-module hook 'hook-packaging.py' from 'C:\\Users\\tandat\\AppData\\Local\\Programs\\Python\\Python313\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
+26908 INFO: Processing pre-safe-import-module hook 'hook-jaraco.text.py' from 'C:\\Users\\tandat\\AppData\\Local\\Programs\\Python\\Python313\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
+26909 INFO: Setuptools: 'jaraco.text' appears to be a setuptools-vendored copy - creating alias to 'setuptools._vendor.jaraco.text'!
+26923 INFO: Processing standard module hook 'hook-setuptools._vendor.jaraco.text.py' from 'C:\\Users\\tandat\\AppData\\Local\\Programs\\Python\\Python313\\Lib\\site-packages\\PyInstaller\\hooks'
+26925 INFO: Processing pre-safe-import-module hook 'hook-importlib_resources.py' from 'C:\\Users\\tandat\\AppData\\Local\\Programs\\Python\\Python313\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
+26927 INFO: Processing pre-safe-import-module hook 'hook-jaraco.context.py' from 'C:\\Users\\tandat\\AppData\\Local\\Programs\\Python\\Python313\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
+26927 INFO: Setuptools: 'jaraco.context' appears to be a setuptools-vendored copy - creating alias to 'setuptools._vendor.jaraco.context'!
+26941 INFO: Processing pre-safe-import-module hook 'hook-backports.tarfile.py' from 'C:\\Users\\tandat\\AppData\\Local\\Programs\\Python\\Python313\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
+26942 INFO: Setuptools: 'backports.tarfile' appears to be a setuptools-vendored copy - creating alias to 'setuptools._vendor.backports.tarfile'!
+27090 INFO: Processing standard module hook 'hook-backports.py' from 'C:\\Users\\tandat\\AppData\\Local\\Programs\\Python\\Python313\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+27218 INFO: Processing pre-safe-import-module hook 'hook-importlib_metadata.py' from 'C:\\Users\\tandat\\AppData\\Local\\Programs\\Python\\Python313\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
+27219 INFO: Setuptools: 'importlib_metadata' appears to be a setuptools-vendored copy - creating alias to 'setuptools._vendor.importlib_metadata'!
+27266 INFO: Processing standard module hook 'hook-setuptools._vendor.importlib_metadata.py' from 'C:\\Users\\tandat\\AppData\\Local\\Programs\\Python\\Python313\\Lib\\site-packages\\PyInstaller\\hooks'
+27268 INFO: Processing pre-safe-import-module hook 'hook-zipp.py' from 'C:\\Users\\tandat\\AppData\\Local\\Programs\\Python\\Python313\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
+27269 INFO: Setuptools: 'zipp' appears to be a setuptools-vendored copy - creating alias to 'setuptools._vendor.zipp'!
+27652 INFO: Processing pre-safe-import-module hook 'hook-tomli.py' from 'C:\\Users\\tandat\\AppData\\Local\\Programs\\Python\\Python313\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
+27653 INFO: Setuptools: 'tomli' appears to be a setuptools-vendored copy - creating alias to 'setuptools._vendor.tomli'!
+28432 INFO: Processing pre-safe-import-module hook 'hook-wheel.py' from 'C:\\Users\\tandat\\AppData\\Local\\Programs\\Python\\Python313\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
+28432 INFO: Setuptools: 'wheel' appears to be a setuptools-vendored copy - creating alias to 'setuptools._vendor.wheel'!
+30057 INFO: Processing standard module hook 'hook-xml.etree.cElementTree.py' from 'C:\\Users\\tandat\\AppData\\Local\\Programs\\Python\\Python313\\Lib\\site-packages\\PyInstaller\\hooks'
+32078 INFO: Processing module hooks (post-graph stage)...
+32720 INFO: Performing binary vs. data reclassification (134 entries)
+32754 INFO: Looking for ctypes DLLs
+32821 INFO: Analyzing run-time hooks ...
+32824 INFO: Including run-time hook 'pyi_rth_inspect.py' from 'C:\\Users\\tandat\\AppData\\Local\\Programs\\Python\\Python313\\Lib\\site-packages\\PyInstaller\\hooks\\rthooks'
+32828 INFO: Including run-time hook 'pyi_rth_pkgutil.py' from 'C:\\Users\\tandat\\AppData\\Local\\Programs\\Python\\Python313\\Lib\\site-packages\\PyInstaller\\hooks\\rthooks'
+32830 INFO: Including run-time hook 'pyi_rth_multiprocessing.py' from 'C:\\Users\\tandat\\AppData\\Local\\Programs\\Python\\Python313\\Lib\\site-packages\\PyInstaller\\hooks\\rthooks'
+32832 INFO: Including run-time hook 'pyi_rth_setuptools.py' from 'C:\\Users\\tandat\\AppData\\Local\\Programs\\Python\\Python313\\Lib\\site-packages\\PyInstaller\\hooks\\rthooks'
+32834 INFO: Including run-time hook 'pyi_rth_pyside6.py' from 'C:\\Users\\tandat\\AppData\\Local\\Programs\\Python\\Python313\\Lib\\site-packages\\PyInstaller\\hooks\\rthooks'
+32836 INFO: Processing pre-find-module-path hook 'hook-_pyi_rth_utils.py' from 'C:\\Users\\tandat\\AppData\\Local\\Programs\\Python\\Python313\\Lib\\site-packages\\PyInstaller\\hooks\\pre_find_module_path'
+32838 INFO: Processing standard module hook 'hook-_pyi_rth_utils.py' from 'C:\\Users\\tandat\\AppData\\Local\\Programs\\Python\\Python313\\Lib\\site-packages\\PyInstaller\\hooks'
+32859 INFO: Creating base_library.zip...
+32882 INFO: Looking for dynamic libraries
+34208 INFO: Extra DLL search directories (AddDllDirectory): ['C:\\Users\\tandat\\AppData\\Local\\Programs\\Python\\Python313\\Lib\\site-packages\\shiboken6', 'C:\\Users\\tandat\\AppData\\Local\\Programs\\Python\\Python313\\Lib\\site-packages\\numpy.libs']
+34208 INFO: Extra DLL search directories (PATH): ['C:\\Users\\tandat\\AppData\\Local\\Programs\\Python\\Python313\\Lib\\site-packages\\PySide6']
+35948 INFO: Warnings written to C:\Users\tandat\Desktop\Tools\ToolSaoKe\build\BSRv1.0\warn-BSRv1.0.txt
+36039 INFO: Graph cross-reference written to C:\Users\tandat\Desktop\Tools\ToolSaoKe\build\BSRv1.0\xref-BSRv1.0.html
+36090 INFO: checking PYZ
+36090 INFO: Building PYZ because PYZ-00.toc is non existent
+36091 INFO: Building PYZ (ZlibArchive) C:\Users\tandat\Desktop\Tools\ToolSaoKe\build\BSRv1.0\PYZ-00.pyz
+37216 INFO: Building PYZ (ZlibArchive) C:\Users\tandat\Desktop\Tools\ToolSaoKe\build\BSRv1.0\PYZ-00.pyz completed successfully.
+37245 INFO: checking PKG
+37245 INFO: Building PKG because PKG-00.toc is non existent
+37246 INFO: Building PKG (CArchive) BSRv1.0.pkg
+64946 INFO: Building PKG (CArchive) BSRv1.0.pkg completed successfully.
+64952 INFO: Bootloader C:\Users\tandat\AppData\Local\Programs\Python\Python313\Lib\site-packages\PyInstaller\bootloader\Windows-64bit-intel\runw.exe
+64952 INFO: checking EXE
+64952 INFO: Building EXE because EXE-00.toc is non existent
+64952 INFO: Building EXE from EXE-00.toc
+64952 INFO: Copying bootloader EXE to C:\Users\tandat\Desktop\Tools\ToolSaoKe\dist\BSRv1.0.exe
+64957 INFO: Copying icon to EXE
+64962 INFO: Copying 0 resources to EXE
+64962 INFO: Embedding manifest in EXE
+64967 INFO: Appending PKG archive to EXE
+65028 INFO: Fixing EXE headers
+65397 INFO: Building EXE from EXE-00.toc completed successfully.
+65405 INFO: Build complete! The results are available in: C:\Users\tandat\Desktop\Tools\ToolSaoKe\dist
+[Fri 04/03/2026 10:45:48.69] OK
+[Fri 04/03/2026 10:45:48.69] Build thanh cong. Output: dist\BSRv1.0.exe

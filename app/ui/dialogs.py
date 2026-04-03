@@ -44,10 +44,12 @@ class PairDialog(QDialog):
         self.system_rows = list(system_rows or [])
         self.bank_rows = list(bank_rows or [])
         self.setWindowTitle(tr(language, "open_pair_title"))
-        self.resize(960, 620)
+        self.setObjectName("pairDialog")
+        self.resize(1120, 720)
+        self.setMinimumSize(980, 620)
         layout = QHBoxLayout(self)
         layout.setContentsMargins(18, 18, 18, 18)
-        layout.setSpacing(16)
+        layout.setSpacing(18)
         layout.addWidget(self._build_panel(system_title, system_headers, self.system_rows, self.bank_rows), 1)
         layout.addWidget(self._build_panel(bank_title, bank_headers, self.bank_rows, self.system_rows), 1)
 
@@ -55,14 +57,37 @@ class PairDialog(QDialog):
         panel = QFrame(self)
         panel.setObjectName("card")
         layout = QVBoxLayout(panel)
-        layout.setContentsMargins(16, 16, 16, 16)
-        layout.setSpacing(10)
+        layout.setContentsMargins(18, 18, 18, 18)
+        layout.setSpacing(12)
+        title_row = QHBoxLayout()
+        title_row.setContentsMargins(0, 0, 0, 0)
+        title_row.setSpacing(8)
         title_label = QLabel(title)
         title_label.setObjectName("sectionTitle")
+        summary_label = QLabel(self._panel_summary_text(rows))
+        summary_label.setObjectName("pairPanelSummary")
+        summary_label.setVisible(bool(rows))
+        title_row.addWidget(title_label)
+        title_row.addStretch(1)
+        title_row.addWidget(summary_label, 0, Qt.AlignRight | Qt.AlignVCenter)
         browser = QTextBrowser(panel)
+        browser.setObjectName("pairDetailsBrowser")
         browser.setOpenExternalLinks(False)
+        browser.setFrameShape(QFrame.NoFrame)
+        browser.document().setDocumentMargin(0)
         browser.setHtml(self._build_details_html(headers, rows))
-        layout.addWidget(title_label)
+        browser.setStyleSheet(
+            """
+            QTextBrowser#pairDetailsBrowser,
+            QTextBrowser#pairExplainBrowser {
+                background: #fbfdff;
+                border: 1px solid #dbe4f0;
+                border-radius: 14px;
+                padding: 8px;
+            }
+            """
+        )
+        layout.addLayout(title_row)
         layout.addWidget(browser, 1)
 
         if rows:
@@ -72,11 +97,30 @@ class PairDialog(QDialog):
             toggle.setArrowType(Qt.RightArrow)
             toggle.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
             toggle.setText(self._label("explain_show"))
+            toggle.setCursor(Qt.PointingHandCursor)
+            toggle.setStyleSheet(
+                """
+                QToolButton {
+                    border: none;
+                    background: transparent;
+                    color: #2563eb;
+                    font-size: 12px;
+                    font-weight: 600;
+                    padding: 2px 0;
+                }
+                QToolButton:hover {
+                    color: #1d4ed8;
+                }
+                """
+            )
 
             explanation = QTextBrowser(panel)
+            explanation.setObjectName("pairExplainBrowser")
             explanation.setOpenExternalLinks(False)
+            explanation.setFrameShape(QFrame.NoFrame)
+            explanation.document().setDocumentMargin(0)
             explanation.setVisible(False)
-            explanation.setMaximumHeight(220)
+            explanation.setMaximumHeight(260)
             explanation.setHtml(self._build_explanation_html(rows, counterpart_rows))
 
             toggle.toggled.connect(
@@ -88,32 +132,16 @@ class PairDialog(QDialog):
 
     def _build_details_html(self, headers: list[str], rows: list[object]) -> str:
         if not rows:
-            return f"<p>{escape(tr(self.language, 'no_pair'))}</p>"
-        if len(rows) == 1:
-            details_rows = self._single_row_details(headers, rows[0])
-            return self._table_html(details_rows) if details_rows else f"<p>{escape(tr(self.language, 'no_pair'))}</p>"
-
-        html_sections = [
-            "<div style='margin-bottom:10px;padding:10px 12px;border:1px solid #dbe4f0;"
-            "border-radius:12px;background:#f8fbff'>"
-            f"<b>{escape(self._label('group_summary'))}</b><br>"
-            f"{escape(self._label('group_rows'))}: {len(rows)}<br>"
-            f"{escape(self._label('group_total'))}: {escape(format_vnd(sum(getattr(row, 'amount', 0) for row in rows)))}"
-            "</div>"
-        ]
+            return self._wrap_html(self._empty_state_html())
+        html_sections = [self._group_summary_html(rows)]
         for index, row in enumerate(rows, start=1):
             details_rows = self._single_row_details(headers, row)
             if not details_rows:
                 continue
-            html_sections.append(
-                "<div style='margin-bottom:14px'>"
-                f"<div style='margin-bottom:6px;font-weight:700;color:#0f172a'>{escape(self._row_heading(index, row))}</div>"
-                f"{self._table_html(details_rows)}"
-                "</div>"
-            )
+            html_sections.append(self._row_card_html(index, row, details_rows))
         if len(html_sections) == 1:
-            return f"<p>{escape(tr(self.language, 'no_pair'))}</p>"
-        return "".join(html_sections)
+            return self._wrap_html(self._empty_state_html())
+        return self._wrap_html("".join(html_sections))
 
     def _single_row_details(self, headers: list[str], row) -> list[str]:
         rows: list[str] = []
@@ -161,11 +189,21 @@ class PairDialog(QDialog):
                 is_html=True,
             ),
         ]
-        return self._table_html(rows)
+        header = (
+            "<div class='summary-card'>"
+            f"<div class='summary-title'>{escape(self._label('group_summary'))}</div>"
+            "<div class='summary-metrics'>"
+            f"{self._metric_chip_html(self._label('group_shape_label'), f'{len(current_rows)}-{len(counterpart_rows)}')}"
+            f"{self._metric_chip_html(self._label('group_total_current'), format_vnd(current_total))}"
+            f"{self._metric_chip_html(self._label('group_total_counterpart'), format_vnd(counterpart_total))}"
+            "</div>"
+            "</div>"
+        )
+        return self._wrap_html(header + self._table_html(rows))
 
     def _table_html(self, rows: list[str]) -> str:
         return (
-            "<table width='100%' cellspacing='0' cellpadding='0' style='border-collapse:collapse;table-layout:fixed'>"
+            "<table width='100%' cellspacing='0' cellpadding='0' class='detail-table'>"
             + "".join(rows)
             + "</table>"
         )
@@ -174,12 +212,10 @@ class PairDialog(QDialog):
         rendered = value if is_html else escape(value)
         return (
             "<tr>"
-            "<td style='width:34%;padding:8px 10px;font-weight:600;vertical-align:top;"
-            "background:#f8fafc;border-bottom:1px solid #e5e7eb;word-break:break-word'>"
+            "<td class='detail-label'>"
             f"{escape(label)}"
             "</td>"
-            "<td style='padding:8px 10px;vertical-align:top;border-bottom:1px solid #e5e7eb;"
-            "white-space:pre-wrap;word-break:break-word'>"
+            "<td class='detail-value'>"
             f"{rendered}"
             "</td>"
             "</tr>"
@@ -194,6 +230,171 @@ class PairDialog(QDialog):
         if not rows:
             return self._label("debug_none")
         return ", ".join(str(getattr(row, "excel_row", "")) for row in rows if getattr(row, "excel_row", None))
+
+    def _panel_summary_text(self, rows: list[object]) -> str:
+        if not rows:
+            return ""
+        return f"{len(rows)} • {format_vnd(sum(getattr(row, 'amount', 0) for row in rows))}"
+
+    def _group_summary_html(self, rows: list[object]) -> str:
+        total = sum(getattr(row, "amount", 0) for row in rows)
+        return (
+            "<div class='summary-card'>"
+            f"<div class='summary-title'>{escape(self._label('group_summary'))}</div>"
+            "<div class='summary-metrics'>"
+            f"{self._metric_chip_html(self._label('group_rows'), str(len(rows)))}"
+            f"{self._metric_chip_html(self._label('group_total'), format_vnd(total))}"
+            "</div>"
+            "</div>"
+        )
+
+    def _row_card_html(self, index: int, row, details_rows: list[str]) -> str:
+        return (
+            "<section class='entry-card'>"
+            "<div class='entry-header'>"
+            f"<div class='entry-title'>{escape(self._row_heading(index, row))}</div>"
+            f"<div class='entry-amount'>{escape(format_vnd(getattr(row, 'amount', 0)))}</div>"
+            "</div>"
+            f"{self._table_html(details_rows)}"
+            "</section>"
+        )
+
+    @staticmethod
+    def _metric_chip_html(label: str, value: str) -> str:
+        return (
+            "<div class='metric-chip'>"
+            f"<span class='metric-label'>{escape(label)}</span>"
+            f"<span class='metric-value'>{escape(value)}</span>"
+            "</div>"
+        )
+
+    def _empty_state_html(self) -> str:
+        return (
+            "<div class='empty-state'>"
+            f"<div class='empty-title'>{escape(tr(self.language, 'no_pair'))}</div>"
+            "</div>"
+        )
+
+    def _wrap_html(self, body: str) -> str:
+        return f"""
+        <html>
+          <head>
+            <style>
+              body {{
+                margin: 0;
+                padding: 0;
+                background: transparent;
+                color: #18212f;
+                font-family: 'Segoe UI', 'Microsoft YaHei UI', sans-serif;
+                font-size: 13px;
+              }}
+              .summary-card {{
+                margin-bottom: 12px;
+                padding: 12px 14px;
+                background: #f8fbff;
+                border: 1px solid #dbe4f0;
+                border-radius: 14px;
+              }}
+              .summary-title {{
+                font-size: 12px;
+                font-weight: 700;
+                color: #0f172a;
+                margin-bottom: 10px;
+              }}
+              .summary-metrics {{
+                overflow: hidden;
+              }}
+              .metric-chip {{
+                float: left;
+                margin: 0 8px 8px 0;
+                padding: 8px 10px;
+                min-width: 112px;
+                background: #ffffff;
+                border: 1px solid #dbe4f0;
+                border-radius: 12px;
+              }}
+              .metric-label {{
+                display: block;
+                font-size: 11px;
+                color: #64748b;
+                margin-bottom: 3px;
+              }}
+              .metric-value {{
+                display: block;
+                font-weight: 700;
+                color: #0f172a;
+              }}
+              .entry-card {{
+                margin-bottom: 14px;
+                border: 1px solid #e2e8f0;
+                border-radius: 14px;
+                overflow: hidden;
+                background: #ffffff;
+              }}
+              .entry-header {{
+                padding: 10px 12px;
+                background: linear-gradient(180deg, #f8fbff 0%, #f1f6fd 100%);
+                border-bottom: 1px solid #e2e8f0;
+              }}
+              .entry-title {{
+                font-weight: 700;
+                color: #0f172a;
+                line-height: 1.45;
+              }}
+              .entry-amount {{
+                margin-top: 4px;
+                font-size: 12px;
+                font-weight: 700;
+                color: #2563eb;
+              }}
+              .detail-table {{
+                border-collapse: collapse;
+                table-layout: fixed;
+              }}
+              .detail-label {{
+                width: 34%;
+                padding: 9px 12px;
+                font-weight: 600;
+                vertical-align: top;
+                background: #f8fafc;
+                border-bottom: 1px solid #e5e7eb;
+                word-break: break-word;
+              }}
+              .detail-value {{
+                padding: 9px 12px;
+                vertical-align: top;
+                border-bottom: 1px solid #e5e7eb;
+                white-space: pre-wrap;
+                word-break: break-word;
+              }}
+              .detail-table tr:last-child td {{
+                border-bottom: none;
+              }}
+              .empty-state {{
+                min-height: 120px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                border: 1px dashed #dbe4f0;
+                border-radius: 14px;
+                background: #fbfdff;
+              }}
+              .empty-title {{
+                color: #64748b;
+                font-weight: 600;
+              }}
+              ul {{
+                margin: 0;
+                padding-left: 18px;
+              }}
+              li {{
+                margin-bottom: 4px;
+              }}
+            </style>
+          </head>
+          <body>{body}</body>
+        </html>
+        """
 
     def _row_heading(self, index: int, row) -> str:
         return (

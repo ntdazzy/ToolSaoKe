@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 from datetime import datetime
 import sys
+import threading
 from pathlib import Path
 
 
@@ -85,3 +86,62 @@ def setup_logging() -> Path:
     logging.captureWarnings(True)
     logging.getLogger(__name__).info("Đã khởi tạo log file tại %s", log_file_path)
     return log_file_path
+
+
+def install_exception_hooks() -> None:
+    logger = logging.getLogger("app.runtime")
+
+    def _handle_exception(exc_type, exc_value, exc_traceback) -> None:
+        if issubclass(exc_type, KeyboardInterrupt):
+            sys.__excepthook__(exc_type, exc_value, exc_traceback)
+            return
+        logger.exception(
+            "Unhandled exception",
+            exc_info=(exc_type, exc_value, exc_traceback),
+        )
+        sys.__excepthook__(exc_type, exc_value, exc_traceback)
+
+    def _handle_thread_exception(args: threading.ExceptHookArgs) -> None:
+        logger.exception(
+            "Unhandled thread exception in %s",
+            args.thread.name if args.thread else "unknown-thread",
+            exc_info=(args.exc_type, args.exc_value, args.exc_traceback),
+        )
+
+    sys.excepthook = _handle_exception
+    threading.excepthook = _handle_thread_exception
+
+
+def install_qt_message_logging() -> None:
+    try:
+        from PySide6.QtCore import QtMsgType, qInstallMessageHandler
+    except ImportError:
+        return
+
+    logger = logging.getLogger("app.qt")
+    previous_handler = qInstallMessageHandler(None)
+
+    def _qt_message_handler(message_type, context, message) -> None:
+        file_name = getattr(context, "file", "") or ""
+        line_number = getattr(context, "line", 0) or 0
+        category = getattr(context, "category", "") or ""
+        location = f"{file_name}:{line_number}" if file_name else ""
+        prefix = " | ".join(part for part in (category, location) if part)
+        formatted_message = f"{prefix} | {message}" if prefix else message
+
+        if message_type == QtMsgType.QtDebugMsg:
+            level = logging.DEBUG
+        elif message_type == QtMsgType.QtInfoMsg:
+            level = logging.INFO
+        elif message_type == QtMsgType.QtWarningMsg:
+            level = logging.WARNING
+        elif message_type == QtMsgType.QtCriticalMsg:
+            level = logging.ERROR
+        else:
+            level = logging.CRITICAL
+        logger.log(level, formatted_message)
+
+        if previous_handler is not None:
+            previous_handler(message_type, context, message)
+
+    qInstallMessageHandler(_qt_message_handler)

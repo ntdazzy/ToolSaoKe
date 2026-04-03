@@ -7,7 +7,11 @@ import logging
 from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import QApplication
 
-from app.logging_utils import get_log_file_path
+from app.logging_utils import (
+    get_log_file_path,
+    install_exception_hooks,
+    install_qt_message_logging,
+)
 from app.resource_utils import logo_image_path
 from app.ui.main_window import MainWindow
 
@@ -22,6 +26,8 @@ def _configure_utf8() -> None:
 
 def main() -> int:
     _configure_utf8()
+    install_exception_hooks()
+    install_qt_message_logging()
     logger = logging.getLogger(__name__)
     logger.info("Khởi động ứng dụng. Log file: %s", get_log_file_path())
     app = QApplication(sys.argv)
