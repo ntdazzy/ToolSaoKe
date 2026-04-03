@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from PySide6.QtWidgets import (
-    QCheckBox,
     QFrame,
     QGridLayout,
     QHBoxLayout,
@@ -13,7 +12,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from app.ui.widgets import FrozenTableView, StyledComboBox
+from app.ui.widgets import FrozenTableView, StyledCheckBox, StyledComboBox
 
 
 class FilePickerPanel(QFrame):
@@ -125,7 +124,7 @@ class SummaryActionsBar(QFrame):
         self.export_button.setFixedHeight(36)
         self.export_button.setEnabled(False)
 
-        self.attach_statement_checkbox = QCheckBox()
+        self.attach_statement_checkbox = StyledCheckBox()
         self.attach_statement_checkbox.setChecked(False)
 
         layout.addWidget(self.history_button)

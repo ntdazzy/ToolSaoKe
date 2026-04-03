@@ -90,6 +90,7 @@ class ReconciliationService:
             for stage in STRICT_STAGES:
                 progress += self._match_transactions_pass(system_rows, bank_rows, stage, allow_review=False)
             progress += self._match_tax_aggregates(system_rows, bank_rows)
+            progress += self._match_bank_component_splits(system_rows, bank_rows)
             logger.debug("Vòng dò nghiêm ngặt %s hoàn tất. progress=%s", iteration, progress)
             if progress == 0:
                 break
@@ -261,10 +262,16 @@ class ReconciliationService:
         bank_row.status = status
         system_row.match_type = "exact"
         bank_row.match_type = "exact"
+        system_row.rule_code = "exact"
+        bank_row.rule_code = "exact"
         system_row.group_id = None
         bank_row.group_id = None
         system_row.group_order = 0
         bank_row.group_order = 0
+        system_row.review_group_id = None
+        bank_row.review_group_id = None
+        system_row.review_group_order = 0
+        bank_row.review_group_order = 0
         system_row.confidence = pair.score
         bank_row.confidence = pair.score
         system_row.match_reason = "\n".join(pair.reasons)
@@ -354,6 +361,211 @@ class ReconciliationService:
             )
         return matched_group_count
 
+    def _match_bank_component_splits(
+        self,
+        system_rows: list[SystemTransaction],
+        bank_rows: list[BankTransaction],
+    ) -> int:
+        unmatched_system_rows = [
+            row
+            for row in system_rows
+            if row.status == "unmatched" and row.direction == "expense" and row.amount > 0
+        ]
+        unmatched_bank_rows = [
+            row
+            for row in bank_rows
+            if row.status == "unmatched"
+            and row.direction == "expense"
+            and len(self._bank_component_values(row)) >= 2
+        ]
+        if not unmatched_system_rows or not unmatched_bank_rows:
+            return 0
+
+        matched_system_ids: set[str] = set()
+        matched_bank_ids: set[str] = set()
+        matched_group_count = 0
+
+        for bank_row in sorted(
+            unmatched_bank_rows,
+            key=lambda row: (self._bank_effective_date(row) or date.min, row.excel_row),
+        ):
+            if bank_row.row_id in matched_bank_ids or bank_row.status != "unmatched":
+                continue
+            component_values = self._bank_component_values(bank_row)
+            if len(component_values) < 2:
+                continue
+
+            candidate_system_rows = [
+                row
+                for row in unmatched_system_rows
+                if row.row_id not in matched_system_ids
+                and row.status == "unmatched"
+                and self._composite_component_candidate_allowed(row, bank_row)
+            ]
+            if not candidate_system_rows:
+                continue
+
+            matches = self._find_composite_system_matches(candidate_system_rows, component_values)
+            if len(matches) != 1:
+                continue
+
+            selected_rows = matches[0]
+            self._mark_bank_component_group_match(bank_row, selected_rows, component_values)
+            matched_bank_ids.add(bank_row.row_id)
+            matched_system_ids.update(row.row_id for row in selected_rows)
+            matched_group_count += 1
+
+        if matched_group_count:
+            logger.info(
+                "ÄÃ£ ghÃ©p bá»• sung %s nhÃ³m sao kÃª composite chi+phÃ­(+VAT) vá» há»‡ thá»‘ng.",
+                matched_group_count,
+            )
+        return matched_group_count
+
+    @staticmethod
+    def _bank_component_values(bank_row: BankTransaction) -> list[tuple[str, int]]:
+        component_values: list[tuple[str, int]] = []
+        if bank_row.debit:
+            component_values.append(("debit", abs(bank_row.debit)))
+        if bank_row.fee:
+            component_values.append(("fee", abs(bank_row.fee)))
+        if bank_row.vat:
+            component_values.append(("vat", abs(bank_row.vat)))
+        return component_values
+
+    def _find_composite_system_matches(
+        self,
+        candidate_system_rows: list[SystemTransaction],
+        component_values: list[tuple[str, int]],
+    ) -> list[list[SystemTransaction]]:
+        unique_matches: dict[tuple[str, ...], list[SystemTransaction]] = {}
+        for partition_totals in self._component_partitions(component_values):
+            for matched_rows in self._collect_partition_matches(candidate_system_rows, partition_totals):
+                row_ids = tuple(sorted(row.row_id for row in matched_rows))
+                unique_matches.setdefault(
+                    row_ids,
+                    sorted(matched_rows, key=self._review_group_sort_key),
+                )
+        return list(unique_matches.values())
+
+    def _collect_partition_matches(
+        self,
+        candidate_system_rows: list[SystemTransaction],
+        partition_totals: tuple[int, ...],
+    ) -> list[list[SystemTransaction]]:
+        ordered_totals = tuple(sorted(partition_totals, reverse=True))
+        amount_map: dict[int, list[SystemTransaction]] = defaultdict(list)
+        for row in candidate_system_rows:
+            amount_map[row.amount].append(row)
+        for rows in amount_map.values():
+            rows.sort(key=self._review_group_sort_key)
+
+        matches: list[list[SystemTransaction]] = []
+
+        def backtrack(position: int, used_ids: set[str], current_rows: list[SystemTransaction]) -> None:
+            if position >= len(ordered_totals):
+                matches.append(list(current_rows))
+                return
+            target_amount = ordered_totals[position]
+            for row in amount_map.get(target_amount, []):
+                if row.row_id in used_ids:
+                    continue
+                used_ids.add(row.row_id)
+                current_rows.append(row)
+                backtrack(position + 1, used_ids, current_rows)
+                current_rows.pop()
+                used_ids.remove(row.row_id)
+
+        backtrack(0, set(), [])
+        return matches
+
+    @staticmethod
+    def _component_partitions(component_values: list[tuple[str, int]]) -> list[tuple[int, ...]]:
+        values = [value for _name, value in component_values if value > 0]
+        if len(values) < 2:
+            return []
+        if len(values) == 2:
+            return [tuple(sorted(values, reverse=True))]
+        a, b, c = values
+        partitions = {
+            tuple(sorted((a, b, c), reverse=True)),
+            tuple(sorted((a + b, c), reverse=True)),
+            tuple(sorted((a + c, b), reverse=True)),
+            tuple(sorted((b + c, a), reverse=True)),
+        }
+        return sorted(partitions, key=lambda item: (len(item), item), reverse=True)
+
+    def _composite_component_candidate_allowed(
+        self,
+        system_row: SystemTransaction,
+        bank_row: BankTransaction,
+    ) -> bool:
+        date_gap, _source = self._date_gap_info(system_row, bank_row)
+        return date_gap <= 7
+
+    def _mark_bank_component_group_match(
+        self,
+        bank_row: BankTransaction,
+        system_rows: list[SystemTransaction],
+        component_values: list[tuple[str, int]],
+    ) -> None:
+        group_id = self._next_group_id("cmp")
+        ordered_system_rows = sorted(system_rows, key=self._review_group_sort_key)
+        component_text = self._composite_component_text(component_values)
+        confidence = 90
+        reason = (
+            f"GhÃ©p 1 dÃ²ng sao kÃª cÃ³ {component_text} thÃ nh {len(ordered_system_rows)} dÃ²ng há»‡ thá»‘ng"
+            f" (tá»•ng {bank_row.amount:,.0f})"
+        )
+
+        bank_row.status = "matched"
+        bank_row.match_type = "group"
+        bank_row.rule_code = "bank_composite_split"
+        bank_row.group_id = group_id
+        bank_row.group_order = 1
+        bank_row.review_group_id = None
+        bank_row.review_group_order = 0
+        bank_row.confidence = confidence
+        bank_row.match_reason = reason
+        bank_row.matched_system_id = ordered_system_rows[0].row_id
+        bank_row.matched_system_row = ordered_system_rows[0].excel_row
+        bank_row.review_system_ids = []
+        bank_row.review_system_rows = []
+
+        shared_prefixes = set(bank_row.reference_prefixes)
+        for order, system_row in enumerate(ordered_system_rows, start=1):
+            system_row.status = "matched"
+            system_row.match_type = "group"
+            system_row.rule_code = "bank_composite_split"
+            system_row.group_id = group_id
+            system_row.group_order = order
+            system_row.review_group_id = None
+            system_row.review_group_order = 0
+            system_row.confidence = confidence
+            system_row.match_reason = reason
+            system_row.matched_bank_id = bank_row.row_id
+            system_row.matched_bank_row = bank_row.excel_row
+            system_row.review_bank_ids = []
+            system_row.review_bank_rows = []
+            shared_prefixes |= system_row.reference_prefixes
+
+        bank_row.reference_prefixes = shared_prefixes
+        for system_row in ordered_system_rows:
+            system_row.reference_prefixes = shared_prefixes
+
+    @staticmethod
+    def _composite_component_text(component_values: list[tuple[str, int]]) -> str:
+        component_labels = {
+            "debit": "chi",
+            "fee": "phÃ­",
+            "vat": "thuáº¿",
+        }
+        return " + ".join(
+            f"{component_labels.get(name, name)} {value:,.0f}"
+            for name, value in component_values
+            if value > 0
+        )
+
     def _mark_remaining_review_candidates(
         self,
         system_rows: list[SystemTransaction],
@@ -370,6 +582,7 @@ class ReconciliationService:
                 bank_groups[(row.direction, row.amount)].append(row)
 
         changed = 0
+        grouped_review_count = 0
         for group_key in sorted(set(system_groups) & set(bank_groups)):
             system_group = system_groups[group_key]
             bank_group = bank_groups[group_key]
@@ -408,12 +621,32 @@ class ReconciliationService:
                 bank_candidates[bank_id].append((system_lookup[system_id], pair))
 
             for system_id, candidates in system_candidates.items():
-                changed += self._apply_review_candidates(system_lookup[system_id], candidates, counterpart_label="sao kê")
+                changed += self._apply_review_candidates(
+                    system_lookup[system_id],
+                    candidates,
+                    counterpart_label="sao kê",
+                )
             for bank_id, candidates in bank_candidates.items():
-                changed += self._apply_review_candidates(bank_lookup[bank_id], candidates, counterpart_label="hệ thống")
+                changed += self._apply_review_candidates(
+                    bank_lookup[bank_id],
+                    candidates,
+                    counterpart_label="hệ thống",
+                )
+
+            grouped_review_count += self._assign_review_groups(
+                system_group,
+                bank_group,
+                system_candidates,
+                bank_candidates,
+            )
 
         if changed:
-            logger.info("Đã chuyển %s dòng còn lại sang trạng thái review vì có ứng viên hợp lý.", changed)
+            logger.info(
+                "Đã chuyển %s dòng còn lại sang trạng thái review vì có ứng viên hợp lý.",
+                changed,
+            )
+        if grouped_review_count:
+            logger.info("Đã gom %s nhóm n-n trong phần cần kiểm tra.", grouped_review_count)
         return changed
 
     @staticmethod
@@ -442,8 +675,11 @@ class ReconciliationService:
         top_pair = ordered[0][1]
         row.status = "review"
         row.match_type = "none"
+        row.rule_code = "review_candidate"
         row.group_id = None
         row.group_order = 0
+        row.review_group_id = None
+        row.review_group_order = 0
         row.confidence = min(max(top_pair.score, 55), 79)
         counterpart_ids = [getattr(candidate, "row_id", "") for candidate, _pair in ordered if getattr(candidate, "row_id", "")]
         counterpart_rows = [getattr(candidate, "excel_row", 0) for candidate, _pair in ordered if getattr(candidate, "excel_row", None)]
@@ -466,6 +702,145 @@ class ReconciliationService:
         row.match_reason = "\n".join(reason_lines)
         return 1
 
+    def _assign_review_groups(
+        self,
+        system_group: list[SystemTransaction],
+        bank_group: list[BankTransaction],
+        system_candidates: dict[str, list[tuple[BankTransaction, PairScore]]],
+        bank_candidates: dict[str, list[tuple[SystemTransaction, PairScore]]],
+    ) -> int:
+        system_edges: dict[str, set[str]] = {}
+        bank_edges: dict[str, set[str]] = {}
+
+        for system_row in system_group:
+            if system_row.status != "review":
+                continue
+            bank_ids = {
+                candidate.row_id
+                for candidate, _pair in system_candidates.get(system_row.row_id, [])
+                if getattr(candidate, "status", "unmatched") == "review"
+            }
+            if bank_ids:
+                system_edges[system_row.row_id] = bank_ids
+
+        for bank_row in bank_group:
+            if bank_row.status != "review":
+                continue
+            system_ids = {
+                candidate.row_id
+                for candidate, _pair in bank_candidates.get(bank_row.row_id, [])
+                if getattr(candidate, "status", "unmatched") == "review"
+            }
+            if system_ids:
+                bank_edges[bank_row.row_id] = system_ids
+
+        if not system_edges or not bank_edges:
+            return 0
+
+        system_lookup = {row.row_id: row for row in system_group}
+        bank_lookup = {row.row_id: row for row in bank_group}
+        visited_system: set[str] = set()
+        visited_bank: set[str] = set()
+        assigned_groups = 0
+
+        for seed_system_id in sorted(system_edges):
+            if seed_system_id in visited_system:
+                continue
+
+            component_system_ids: set[str] = set()
+            component_bank_ids: set[str] = set()
+            queue: list[tuple[str, str]] = [("system", seed_system_id)]
+
+            while queue:
+                side, row_id = queue.pop()
+                if side == "system":
+                    if row_id in visited_system:
+                        continue
+                    visited_system.add(row_id)
+                    component_system_ids.add(row_id)
+                    for bank_id in sorted(system_edges.get(row_id, set())):
+                        if bank_id not in component_bank_ids:
+                            queue.append(("bank", bank_id))
+                else:
+                    if row_id in visited_bank:
+                        continue
+                    visited_bank.add(row_id)
+                    component_bank_ids.add(row_id)
+                    for system_id in sorted(bank_edges.get(row_id, set())):
+                        if system_id not in component_system_ids:
+                            queue.append(("system", system_id))
+
+            if len(component_system_ids) <= 1 or len(component_bank_ids) <= 1:
+                continue
+            if len(component_system_ids) != len(component_bank_ids):
+                continue
+
+            component_system_rows = [
+                system_lookup[row_id]
+                for row_id in component_system_ids
+                if row_id in system_lookup
+            ]
+            component_bank_rows = [
+                bank_lookup[row_id]
+                for row_id in component_bank_ids
+                if row_id in bank_lookup
+            ]
+            if len(component_system_rows) != len(component_system_ids):
+                continue
+            if len(component_bank_rows) != len(component_bank_ids):
+                continue
+
+            self._mark_review_group(component_system_rows, component_bank_rows)
+            assigned_groups += 1
+
+        return assigned_groups
+
+    def _mark_review_group(
+        self,
+        system_rows: list[SystemTransaction],
+        bank_rows: list[BankTransaction],
+    ) -> None:
+        review_group_id = self._next_group_id("r")
+        ordered_system_rows = sorted(system_rows, key=self._review_group_sort_key)
+        ordered_bank_rows = sorted(bank_rows, key=self._review_group_sort_key)
+        system_ids = [row.row_id for row in ordered_system_rows]
+        bank_ids = [row.row_id for row in ordered_bank_rows]
+        system_excel_rows = [row.excel_row for row in ordered_system_rows]
+        bank_excel_rows = [row.excel_row for row in ordered_bank_rows]
+        reason_line = (
+            f"Thuộc nhóm cần kiểm tra {review_group_id} "
+            f"({len(ordered_system_rows)}-{len(ordered_bank_rows)})"
+        )
+
+        for order, row in enumerate(ordered_system_rows, start=1):
+            row.rule_code = "review_nn_group"
+            row.review_group_id = review_group_id
+            row.review_group_order = order
+            row.review_bank_ids = list(bank_ids)
+            row.review_bank_rows = list(bank_excel_rows)
+            row.match_reason = self._prepend_reason_line(row.match_reason, reason_line)
+
+        for order, row in enumerate(ordered_bank_rows, start=1):
+            row.rule_code = "review_nn_group"
+            row.review_group_id = review_group_id
+            row.review_group_order = order
+            row.review_system_ids = list(system_ids)
+            row.review_system_rows = list(system_excel_rows)
+            row.match_reason = self._prepend_reason_line(row.match_reason, reason_line)
+
+    def _review_group_sort_key(self, row) -> tuple[date, int]:
+        row_date = getattr(row, "voucher_date", None)
+        if row_date is None:
+            row_date = self._bank_effective_date(row)
+        return (row_date or date.min, getattr(row, "excel_row", 0))
+
+    @staticmethod
+    def _prepend_reason_line(existing_reason: str, line: str) -> str:
+        parts = [segment.strip() for segment in (existing_reason or "").splitlines() if segment.strip()]
+        if line in parts:
+            return existing_reason
+        return "\n".join([line, *parts])
+
     def _mark_tax_group_match(
         self,
         system_row: SystemTransaction,
@@ -483,8 +858,11 @@ class ReconciliationService:
         confidence = 92 if status == "matched" else 76
         system_row.status = status
         system_row.match_type = "group"
+        system_row.rule_code = "tax_vat_group"
         system_row.group_id = group_id
         system_row.group_order = 0
+        system_row.review_group_id = None
+        system_row.review_group_order = 0
         system_row.confidence = confidence
         system_row.match_reason = reason
         system_row.has_tax = True
@@ -497,8 +875,11 @@ class ReconciliationService:
         for order, bank_row in enumerate(sorted(bank_rows, key=lambda row: row.excel_row), start=1):
             bank_row.status = status
             bank_row.match_type = "group"
+            bank_row.rule_code = "tax_vat_group"
             bank_row.group_id = group_id
             bank_row.group_order = order
+            bank_row.review_group_id = None
+            bank_row.review_group_order = 0
             bank_row.confidence = confidence
             bank_row.match_reason = reason
             bank_row.matched_tax = True

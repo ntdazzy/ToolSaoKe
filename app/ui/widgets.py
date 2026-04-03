@@ -2,11 +2,12 @@ from __future__ import annotations
 
 import math
 
-from PySide6.QtCore import QEvent, QPoint, QRect, Qt, Signal, QTimer
+from PySide6.QtCore import QEvent, QPoint, QRect, QRectF, QSize, Qt, Signal, QTimer
 from PySide6.QtGui import QColor, QPainter, QPen
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QCalendarWidget,
+    QCheckBox,
     QComboBox,
     QDateEdit,
     QFrame,
@@ -25,6 +26,7 @@ from PySide6.QtWidgets import (
 
 class FrozenTableView(QTableView):
     action_requested = Signal(object)
+    toggle_requested = Signal(object)
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -34,12 +36,19 @@ class FrozenTableView(QTableView):
         self.setVerticalScrollMode(QAbstractItemView.ScrollPerPixel)
         self.verticalHeader().hide()
         self.setAlternatingRowColors(False)
+        self.clicked.connect(self._handle_click)
         self.doubleClicked.connect(self._handle_double_click)
 
     def set_action_delegate(self, delegate) -> None:
         self.setItemDelegateForColumn(0, delegate)
 
     def select_proxy_index(self, index) -> None:
+        if not index.isValid():
+            return
+        self.selectRow(index.row())
+        self.scrollTo(index, QAbstractItemView.PositionAtCenter)
+
+    def select_model_index(self, index) -> None:
         if not index.isValid():
             return
         self.selectRow(index.row())
@@ -68,8 +77,18 @@ class FrozenTableView(QTableView):
             self.setColumnWidth(column, width)
 
     def _handle_double_click(self, index) -> None:
+        if index.data(Qt.UserRole + 10) == "group":
+            self.toggle_requested.emit(index.data(Qt.UserRole))
+            return
         row = index.data(Qt.UserRole)
         self.action_requested.emit(row)
+
+    def _handle_click(self, index) -> None:
+        if index.column() != 0:
+            return
+        if index.data(Qt.UserRole + 10) != "group":
+            return
+        self.toggle_requested.emit(index.data(Qt.UserRole))
 
 
 class StyledComboBox(QComboBox):
@@ -242,6 +261,61 @@ class SpinnerWidget(QWidget):
             color.setAlpha(alpha)
             painter.setBrush(color)
             painter.drawEllipse(QPoint(int(x - radius), int(y - radius)), int(radius), int(radius))
+        painter.end()
+
+
+class StyledCheckBox(QCheckBox):
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.setCursor(Qt.PointingHandCursor)
+        self.setFocusPolicy(Qt.NoFocus)
+        self.setMouseTracking(True)
+
+    def sizeHint(self):  # type: ignore[override]
+        metrics = self.fontMetrics()
+        text_width = metrics.horizontalAdvance(self.text())
+        text_height = metrics.height()
+        return QSize(16 + 8 + text_width + 4, max(20, text_height + 4))
+
+    def paintEvent(self, event) -> None:  # type: ignore[override]
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing)
+
+        indicator_size = 16
+        indicator_rect = QRect(0, max(0, (self.height() - indicator_size) // 2), indicator_size, indicator_size)
+
+        border = QColor("#94a3b8")
+        background = QColor("#ffffff")
+        text_color = QColor("#18212f")
+        if self.underMouse():
+            border = QColor("#60a5fa")
+        if self.isChecked():
+            border = QColor("#3b82f6")
+            background = QColor("#3b82f6")
+        if not self.isEnabled():
+            border.setAlpha(160)
+            background.setAlpha(160)
+            text_color.setAlpha(150)
+
+        pen = QPen(border, 1)
+        pen.setCosmetic(True)
+        painter.setPen(pen)
+        painter.setBrush(background)
+        painter.drawRoundedRect(QRectF(indicator_rect).adjusted(0.5, 0.5, -0.5, -0.5), 4, 4)
+
+        if self.isChecked():
+            check_pen = QPen(QColor("#ffffff"), 2)
+            check_pen.setCapStyle(Qt.RoundCap)
+            check_pen.setJoinStyle(Qt.RoundJoin)
+            painter.setPen(check_pen)
+            x = indicator_rect.x()
+            y = indicator_rect.y()
+            painter.drawLine(x + 3, y + 8, x + 7, y + 12)
+            painter.drawLine(x + 7, y + 12, x + 13, y + 4)
+
+        text_rect = QRect(indicator_rect.right() + 8, 0, self.width() - indicator_rect.right() - 8, self.height())
+        painter.setPen(text_color)
+        painter.drawText(text_rect, Qt.AlignVCenter | Qt.AlignLeft, self.text())
         painter.end()
 
 

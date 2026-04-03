@@ -50,8 +50,11 @@ class SystemTransaction:
     matched_tax: bool = False
     status: str = "unmatched"
     match_type: str = "none"
+    rule_code: str = "none"
     group_id: str | None = None
     group_order: int = 0
+    review_group_id: str | None = None
+    review_group_order: int = 0
     confidence: int = 0
     match_reason: str = ""
     matched_bank_id: str | None = None
@@ -87,8 +90,11 @@ class BankTransaction:
     matched_tax: bool = False
     status: str = "unmatched"
     match_type: str = "none"
+    rule_code: str = "none"
     group_id: str | None = None
     group_order: int = 0
+    review_group_id: str | None = None
+    review_group_order: int = 0
     confidence: int = 0
     match_reason: str = ""
     matched_system_id: str | None = None

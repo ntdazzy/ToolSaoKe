@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
+from datetime import date
 
 from PySide6.QtWidgets import QFileDialog, QMessageBox, QTableWidgetItem
 
@@ -15,6 +16,16 @@ logger = logging.getLogger(__name__)
 
 
 class MainWindowActionsMixin:
+    def _toggle_group_row(self, source: str, group_row) -> None:
+        group_key = getattr(group_row, "group_key", None)
+        if not group_key:
+            return
+        display_model = self.system_display_model if source == "system" else self.bank_display_model
+        if display_model is None:
+            return
+        display_model.toggle_group(group_key)
+        self._update_row_counts()
+
     def _refresh_history_headers(self) -> None:
         self.history_table.setHorizontalHeaderLabels(
             [
@@ -64,6 +75,24 @@ class MainWindowActionsMixin:
             getattr(row, "excel_row", None),
             getattr(row, "status", None),
         )
+        if getattr(row, "status", "unmatched") == "review" and getattr(row, "review_group_id", None):
+            system_rows, bank_rows = self._review_group_rows(row.review_group_id)
+            if source == "system" and not system_rows:
+                system_rows = [row]
+            if source == "bank" and not bank_rows:
+                bank_rows = [row]
+            dialog = PairDialog(
+                self.current_language,
+                tr(self.current_language, "paired_system"),
+                self.current_result.system_headers,
+                system_rows,
+                tr(self.current_language, "paired_bank"),
+                BANK_GRID_HEADERS,
+                bank_rows,
+                self,
+            )
+            dialog.exec()
+            return
         if getattr(row, "match_type", "none") == "group" and getattr(row, "group_id", None):
             system_rows, bank_rows = self._group_rows(row.group_id)
             if source == "system" and not system_rows:
@@ -129,15 +158,21 @@ class MainWindowActionsMixin:
     def _focus_counterpart_rows(self, model, proxy, table: FrozenTableView, row_ids: list[str]) -> None:
         if not model or not proxy or not row_ids:
             return
+        display_model = table.model()
+        if hasattr(display_model, "ensure_row_visible"):
+            target_column = 2 if getattr(display_model, "columnCount", lambda: 0)() > 2 else 1
+            model_index = display_model.ensure_row_visible(row_ids[0], target_column)
+            if model_index.isValid():
+                table.select_model_index(model_index)
+            return
         source_row = model.row_index_by_id(row_ids[0])
         if source_row is None:
             return
         target_column = 1 if model.columnCount() > 1 else 0
         source_index = model.index(source_row, target_column)
         proxy_index = proxy.mapFromSource(source_index)
-        if not proxy_index.isValid():
-            return
-        table.select_proxy_index(proxy_index)
+        if proxy_index.isValid():
+            table.select_proxy_index(proxy_index)
 
     def _system_row_by_id(self, row_id: str | None):
         if not self.system_model or row_id is None:
@@ -177,6 +212,40 @@ class MainWindowActionsMixin:
         bank_rows = sorted(
             [row for row in self.current_result.bank_rows if getattr(row, "group_id", None) == group_id],
             key=lambda row: (getattr(row, "group_order", 0), getattr(row, "excel_row", 0)),
+        )
+        return system_rows, bank_rows
+
+    def _review_group_rows(self, review_group_id: str) -> tuple[list[object], list[object]]:
+        if self.current_result is None:
+            return [], []
+        system_rows = sorted(
+            [
+                row
+                for row in self.current_result.system_rows
+                if getattr(row, "review_group_id", None) == review_group_id
+            ],
+            key=lambda row: (
+                getattr(row, "review_group_order", 0),
+                getattr(row, "voucher_date", None) or date.min,
+                getattr(row, "excel_row", 0),
+            ),
+        )
+        bank_rows = sorted(
+            [
+                row
+                for row in self.current_result.bank_rows
+                if getattr(row, "review_group_id", None) == review_group_id
+            ],
+            key=lambda row: (
+                getattr(row, "review_group_order", 0),
+                getattr(row, "transaction_date", None)
+                or (
+                    getattr(row, "requesting_datetime", None).date()
+                    if getattr(row, "requesting_datetime", None) is not None
+                    else date.min
+                ),
+                getattr(row, "excel_row", 0),
+            ),
         )
         return system_rows, bank_rows
 

@@ -12,7 +12,12 @@ from app.models import ReconciliationResult
 from app.services.excel_loader import detect_excel_file_kind
 from app.services.utils import format_vnd
 from app.ui.config import BANK_GRID_HEADERS
-from app.ui.table_models import TransactionsFilterProxyModel, TransactionsTableModel
+from app.ui.table_models import (
+    TransactionsDisplayModel,
+    TransactionsFilterProxyModel,
+    TransactionsTableModel,
+    build_group_meta,
+)
 from app.ui.workers import ScanWorker
 
 logger = logging.getLogger(__name__)
@@ -258,10 +263,25 @@ class MainWindowScanMixin:
         self.bank_proxy.setSourceModel(self.bank_model)
         self.system_proxy.setSortRole(Qt.UserRole + 2)
         self.bank_proxy.setSortRole(Qt.UserRole + 2)
-        self.system_grid.table.setModel(self.system_proxy)
-        self.bank_grid.table.setModel(self.bank_proxy)
-        self.system_grid.table.sortByColumn(0, Qt.AscendingOrder)
-        self.bank_grid.table.sortByColumn(0, Qt.AscendingOrder)
+        group_meta = build_group_meta(result.system_rows, result.bank_rows)
+        self.system_display_model = TransactionsDisplayModel(
+            result.system_headers,
+            self.system_proxy,
+            language=self.current_language,
+            grid_kind="system",
+            group_meta=group_meta,
+        )
+        self.bank_display_model = TransactionsDisplayModel(
+            BANK_GRID_HEADERS,
+            self.bank_proxy,
+            language=self.current_language,
+            grid_kind="bank",
+            group_meta=group_meta,
+        )
+        self.system_grid.table.setModel(self.system_display_model)
+        self.bank_grid.table.setModel(self.bank_display_model)
+        self.system_grid.table.sortByColumn(1, Qt.AscendingOrder)
+        self.bank_grid.table.sortByColumn(1, Qt.AscendingOrder)
         self._set_active_grid_mode("bank")
         self._configure_date_filters(result)
         self._populate_search_columns()
@@ -279,7 +299,7 @@ class MainWindowScanMixin:
         metadata = result.metadata
         period_text = ""
         if metadata.from_date and metadata.to_date:
-            period_text = f"{metadata.from_date:%Y-%m-%d} → {metadata.to_date:%Y-%m-%d}"
+            period_text = f"{metadata.from_date:%Y-%m-%d} ～ {metadata.to_date:%Y-%m-%d}"
         values = {
             "meta_bank_name": metadata.bank_name_vi or metadata.bank_name_en,
             "meta_tax_code": metadata.tax_code,

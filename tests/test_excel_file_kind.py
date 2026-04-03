@@ -28,6 +28,10 @@ SAMPLE_EXPECTATIONS = {
         "hệ thống 0012.xls": "system",
         "TRANSACTION_HISTORY__1774918289898.xlsx": "bank",
     },
+    "20260402": {
+        "01.xls": "system",
+        "TRANSACTION_HISTORY__1775114841386.xlsx": "bank",
+    },
 }
 
 

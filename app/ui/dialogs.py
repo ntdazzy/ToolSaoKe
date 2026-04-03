@@ -136,7 +136,12 @@ class PairDialog(QDialog):
         rows = [
             self._table_row(self._label("status_label"), tr(self.language, status_bucket_for_row(first_row))),
             self._table_row(self._label("match_type_label"), self._match_type_text(first_row)),
-            self._table_row(self._label("group_id_label"), getattr(first_row, "group_id", None) or self._label("debug_none")),
+            self._table_row(
+                self._label("group_id_label"),
+                getattr(first_row, "group_id", None)
+                or getattr(first_row, "review_group_id", None)
+                or self._label("debug_none"),
+            ),
             self._table_row(self._label("group_shape_label"), f"{len(current_rows)}-{len(counterpart_rows)}"),
             self._table_row(self._label("group_total_current"), format_vnd(current_total)),
             self._table_row(self._label("group_total_counterpart"), format_vnd(counterpart_total)),
@@ -200,9 +205,13 @@ class PairDialog(QDialog):
     def _match_type_text(self, row) -> str:
         match_type = getattr(row, "match_type", "none")
         if match_type == "group":
+            if getattr(row, "rule_code", "none") == "bank_composite_split":
+                return self._label("composite_group")
             return tr(self.language, "matched_group")
         if match_type == "exact":
             return tr(self.language, "matched_exact")
+        if getattr(row, "status", "unmatched") == "review" and getattr(row, "review_group_id", None):
+            return self._label("review_group")
         return self._label("debug_none")
 
     def _label(self, key: str) -> str:
@@ -220,6 +229,8 @@ class PairDialog(QDialog):
                 "group_total": "Tổng tiền",
                 "group_row": "Dòng",
                 "group_amount": "Số tiền",
+                "review_group": "Nhóm cần kiểm tra",
+                "composite_group": "Nhóm chi + phí/thuế",
                 "debug_confidence": "Độ tin cậy",
                 "debug_current_row": "Dòng hiện tại",
                 "debug_counterpart_row": "Dòng đối ứng",
@@ -244,6 +255,8 @@ class PairDialog(QDialog):
                 "group_total": "Total amount",
                 "group_row": "Row",
                 "group_amount": "Amount",
+                "review_group": "Review group",
+                "composite_group": "Debit + fee/tax group",
                 "debug_confidence": "Confidence",
                 "debug_current_row": "Current row",
                 "debug_counterpart_row": "Matched row",
@@ -268,6 +281,8 @@ class PairDialog(QDialog):
                 "group_total": "总金额",
                 "group_row": "行",
                 "group_amount": "金额",
+                "review_group": "待复核分组",
+                "composite_group": "支出+手续费/税分组",
                 "debug_confidence": "置信度",
                 "debug_current_row": "当前行",
                 "debug_counterpart_row": "对应行",

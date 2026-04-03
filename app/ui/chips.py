@@ -24,6 +24,7 @@ class ChipButton(QPushButton):
         palette: ChipPalette,
         *,
         min_width: int = 84,
+        max_width: int = 176,
         horizontal_padding: int = 14,
         fixed_height: int = 36,
         radius: int = 18,
@@ -32,6 +33,7 @@ class ChipButton(QPushButton):
         super().__init__(parent)
         self._palette = palette
         self._base_min_width = min_width
+        self._max_width = max_width
         self._horizontal_padding = horizontal_padding
         self._fixed_height = fixed_height
         self._radius = radius
@@ -46,6 +48,7 @@ class ChipButton(QPushButton):
         self.setSizePolicy(QSizePolicy.Minimum, QSizePolicy.Fixed)
         self.setCheckable(True)
         self.setFixedHeight(self._fixed_height)
+        self.setMaximumWidth(self._max_width)
         self._sync_width()
 
     def setText(self, text: str) -> None:
@@ -59,6 +62,7 @@ class ChipButton(QPushButton):
             self._base_min_width,
             metrics.horizontalAdvance(self.text()) + (self._horizontal_padding * 2) + 12,
         )
+        width = min(width, self._max_width)
         return QSize(width, self._fixed_height)
 
     def minimumSizeHint(self) -> QSize:
@@ -112,12 +116,14 @@ class ChipButton(QPushButton):
     def _sync_width(self) -> None:
         hint = self.sizeHint()
         self.setMinimumWidth(hint.width())
+        self.setMaximumWidth(self._max_width)
         self.updateGeometry()
 
 
 def summary_chip_palette(mode: str) -> ChipPalette:
     palettes = {
         "all": ChipPalette("#eff4fb", "#d7e1ef", "#475569"),
+        "matched": ChipPalette("#dcfce7", "#bbf7d0", "#166534"),
         "matched_exact": ChipPalette("#dcfce7", "#bbf7d0", "#166534"),
         "matched_group": ChipPalette("#dbeafe", "#bfdbfe", "#1d4ed8"),
         "review": ChipPalette("#fef3c7", "#fde68a", "#92400e"),
@@ -135,3 +141,21 @@ def flow_chip_palette() -> ChipPalette:
         active_border="#3b82f6",
         active_text="#1d4ed8",
     )
+
+
+def match_kind_chip_palette(mode: str) -> ChipPalette:
+    palettes = {
+        "all": ChipPalette(
+            "#eff4fb",
+            "#d7e1ef",
+            "#475569",
+            active_background="#ffffff",
+            active_border="#3b82f6",
+            active_text="#1d4ed8",
+        ),
+        "exact": ChipPalette("#dcfce7", "#bbf7d0", "#166534"),
+        "tax_group": ChipPalette("#dbeafe", "#bfdbfe", "#1d4ed8"),
+        "composite_group": ChipPalette("#ede9fe", "#ddd6fe", "#6d28d9"),
+        "review_nn_group": ChipPalette("#fef3c7", "#fde68a", "#92400e"),
+    }
+    return palettes[mode]

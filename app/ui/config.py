@@ -1,15 +1,18 @@
 from __future__ import annotations
 
+
 SYSTEM_GRID_FIXED_WIDTHS: dict[int, int] = {
-    2: 250,
-    3: 170,
+    0: 34,
+    3: 250,
+    4: 170,
 }
 
 BANK_GRID_FIXED_WIDTHS: dict[int, int] = {
-    3: 138,
-    4: 132,
-    5: 160,
-    6: 300,
+    0: 34,
+    4: 138,
+    5: 132,
+    6: 160,
+    7: 300,
 }
 
 BANK_GRID_HEADERS: list[str] = [
@@ -51,24 +54,21 @@ DATE_FILTER_LABELS: dict[str, dict[str, str]] = {
 SUMMARY_HELP_TOOLTIPS: dict[str, str] = {
     "vi": (
         "<b>Giải thích trạng thái</b><br>"
-        "GD khớp: 1 giao dịch hệ thống khớp 1 giao dịch sao kê.<br>"
-        "Phí/VAT đã khớp: chỉ áp dụng cho các dòng phí/VAT từ sao kê được gom về 1 dòng hệ thống.<br>"
-        "Cần kiểm tra: tool có ứng viên hợp lý nhưng chưa đủ an toàn để chốt.<br>"
+        "Khớp: giao dịch đã có đối ứng an toàn.<br>"
+        "Cần kiểm tra: tool tìm thấy ứng viên hợp lý nhưng chưa đủ chắc để tự chốt.<br>"
         "Chưa khớp: chưa tìm được đối ứng phù hợp, hoặc thuộc ca n-n không tự ghép."
     ),
     "en": (
         "<b>Status meaning</b><br>"
-        "Matched: one system row matches one statement row.<br>"
-        "Fee/VAT matched: statement fee/VAT rows that were merged into one system row.<br>"
-        "Needs review: the tool found a plausible candidate but not enough proof.<br>"
-        "Unmatched: no safe counterpart was found, including n-n cases."
+        "Matched: a safe counterpart was found.<br>"
+        "Needs review: a plausible candidate exists, but the tool is not certain enough.<br>"
+        "Unmatched: no safe counterpart was found, including unresolved n-n cases."
     ),
     "zh": (
         "<b>状态说明</b><br>"
-        "交易已匹配：系统与流水 1 对 1 对应。<br>"
-        "费用/VAT 已匹配：仅显示流水费用/VAT 汇总到 1 条系统记录的情况。<br>"
-        "需要复核：存在合理候选，但证据不足。<br>"
-        "未匹配：尚未找到安全的对应交易，n-n 默认也归入此类。"
+        "已匹配：已找到安全的对应交易。<br>"
+        "需要复核：存在合理候选，但证据不足以自动确认。<br>"
+        "未匹配：尚未找到安全的对应交易，包括未能安全处理的 n-n 情况。"
     ),
 }
 
@@ -82,6 +82,90 @@ REFERENCE_FILTER_OPTIONS: list[tuple[str, str]] = [
     ("HB", "reference_hb"),
 ]
 
+FLOW_FILTER_OPTIONS: list[tuple[str, str]] = [
+    ("all", "flow_all"),
+    ("income", "flow_income"),
+    ("expense", "flow_expense"),
+    ("tax", "flow_tax"),
+]
+
+MATCH_KIND_FILTER_LABELS: dict[str, dict[str, str]] = {
+    "vi": {
+        "caption": "Kiểu đối chiếu",
+        "all": "Tất cả kiểu",
+        "exact": "Khớp lẻ",
+        "tax_group": "Phí/VAT",
+        "composite_group": "Chi + phí/thuế",
+        "review_nn_group": "Nhóm",
+    },
+    "en": {
+        "caption": "Match kind",
+        "all": "All kinds",
+        "exact": "Exact",
+        "tax_group": "Fee/VAT",
+        "composite_group": "Debit + fee/tax",
+        "review_nn_group": "Groups",
+    },
+    "zh": {
+        "caption": "对照类型",
+        "all": "全部类型",
+        "exact": "单笔匹配",
+        "tax_group": "费用/VAT",
+        "composite_group": "支出+费用/税",
+        "review_nn_group": "分组",
+    },
+}
+
+MATCH_KIND_FILTER_OPTIONS_BY_STATUS: dict[str, list[str]] = {
+    "all": [
+        "all",
+        "exact",
+        "tax_group",
+        "composite_group",
+        "review_nn_group",
+    ],
+    "matched": [
+        "all",
+        "exact",
+        "tax_group",
+        "composite_group",
+    ],
+    "review": [
+        "all",
+        "review_nn_group",
+    ],
+}
+
+REFERENCE_PREFIX_SUMMARY_LABELS: dict[str, dict[str, str]] = {
+    "vi": {
+        "FT": "Chuyển khoản",
+        "TT": "Nộp/Rút tiền",
+        "LD": "Khoản vay",
+        "HB": "Phí/VAT",
+        "ST": "Chuyển khoản nội bộ",
+        "SK": "Giao dịch dịch vụ",
+        "OTHER": "Nhóm",
+    },
+    "en": {
+        "FT": "Transfer",
+        "TT": "Cash in/out",
+        "LD": "Loan",
+        "HB": "Fee/VAT",
+        "ST": "Internal transfer",
+        "SK": "Service",
+        "OTHER": "Group",
+    },
+    "zh": {
+        "FT": "转账",
+        "TT": "存取现金",
+        "LD": "贷款",
+        "HB": "费用/VAT",
+        "ST": "内部转账",
+        "SK": "服务交易",
+        "OTHER": "分组",
+    },
+}
+
 
 def date_filter_text(language: str, key: str) -> str:
     language_labels = DATE_FILTER_LABELS.get(language, DATE_FILTER_LABELS["vi"])
@@ -90,3 +174,17 @@ def date_filter_text(language: str, key: str) -> str:
 
 def summary_help_tooltip(language: str) -> str:
     return SUMMARY_HELP_TOOLTIPS.get(language, SUMMARY_HELP_TOOLTIPS["vi"])
+
+
+def match_kind_text(language: str, key: str) -> str:
+    language_labels = MATCH_KIND_FILTER_LABELS.get(language, MATCH_KIND_FILTER_LABELS["vi"])
+    return language_labels[key]
+
+
+def match_kind_options_for_status(status_mode: str) -> list[str]:
+    return list(MATCH_KIND_FILTER_OPTIONS_BY_STATUS.get(status_mode, []))
+
+
+def reference_prefix_summary_text(language: str, prefix: str) -> str:
+    language_labels = REFERENCE_PREFIX_SUMMARY_LABELS.get(language, REFERENCE_PREFIX_SUMMARY_LABELS["vi"])
+    return language_labels.get(prefix, language_labels["OTHER"])

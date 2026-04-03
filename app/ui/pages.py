@@ -25,7 +25,7 @@ from app.ui.components import (
     FilePickerPanel,
     MetricCard,
     SummaryActionsBar,
-    flow_chip_palette,
+    match_kind_chip_palette,
     summary_chip_palette,
 )
 from app.ui.metadata import DEFAULT_METRIC_LAYOUT, METADATA_LAYOUTS
@@ -159,27 +159,15 @@ class ResultsPage(QWidget):
         self.status_buttons["all"].setChecked(True)
         self.toolbar_groups_layout.addWidget(self.status_filter_group)
 
-        self.flow_filter_group = FilterGroupFrame(minimum_height=54)
+        self.flow_filter_group = FilterGroupFrame()
         flow_group_layout = self.flow_filter_group.row_layout
         self.flow_group_label = QLabel()
         self.flow_group_label.setObjectName("filterLabel")
         flow_group_layout.addWidget(self.flow_group_label)
-        self.flow_group = QButtonGroup(self)
-        self.flow_group.setExclusive(True)
-        self.flow_buttons: dict[str, QPushButton] = {}
-        for mode, object_name in (
-            ("all", "flowChipAll"),
-            ("income", "flowChipIncome"),
-            ("expense", "flowChipExpense"),
-            ("tax", "flowChipTax"),
-        ):
-            button = ChipButton(flow_chip_palette(), min_width=96, horizontal_padding=14)
-            button.setObjectName(object_name)
-            self.flow_group.addButton(button)
-            self.flow_buttons[mode] = button
-            flow_group_layout.addWidget(button)
-        self.flow_buttons["all"].setChecked(True)
-        self.toolbar_groups_layout.addWidget(self.flow_filter_group)
+        self.flow_filter_combo = StyledComboBox()
+        self.flow_filter_combo.setMinimumWidth(176)
+        self.flow_filter_combo.setMinimumHeight(36)
+        flow_group_layout.addWidget(self.flow_filter_combo)
 
         self.filter_controls_layout = QBoxLayout(QBoxLayout.LeftToRight)
         self.filter_controls_layout.setSpacing(14)
@@ -194,6 +182,23 @@ class ResultsPage(QWidget):
         reference_group_layout = self.reference_filter_group.row_layout
         reference_group_layout.addWidget(self.reference_filter_label)
         reference_group_layout.addWidget(self.reference_filter_combo)
+
+        self.match_kind_filter_label = QLabel()
+        self.match_kind_filter_label.setObjectName("filterLabel")
+        self.match_kind_filter_group = FilterGroupFrame(minimum_height=54)
+        self.match_kind_filter_group.setSizePolicy(QSizePolicy.Maximum, QSizePolicy.Fixed)
+        match_kind_group_layout = self.match_kind_filter_group.row_layout
+        self.match_kind_group = QButtonGroup(self)
+        self.match_kind_group.setExclusive(True)
+        self.match_kind_buttons: dict[str, QPushButton] = {}
+        match_kind_group_layout.addWidget(self.match_kind_filter_label)
+        for mode in ("all", "exact", "tax_group", "composite_group", "review_nn_group"):
+            button = ChipButton(match_kind_chip_palette(mode), min_width=84, max_width=152, horizontal_padding=14)
+            button.setObjectName(f"matchKindChip{mode.title().replace('_', '')}")
+            self.match_kind_group.addButton(button)
+            self.match_kind_buttons[mode] = button
+            match_kind_group_layout.addWidget(button)
+        self.match_kind_buttons["all"].setChecked(True)
 
         self.date_filter_label = QLabel()
         self.date_filter_label.setObjectName("filterLabel")
@@ -226,6 +231,7 @@ class ResultsPage(QWidget):
         quick_search_layout.addWidget(self.quick_search_edit)
 
         self.filter_controls_layout.addWidget(self.reference_filter_group)
+        self.filter_controls_layout.addWidget(self.flow_filter_group)
         self.filter_controls_layout.addWidget(self.date_filter_group)
         self.filter_controls_layout.addWidget(self.quick_search_group, 1)
 
@@ -238,7 +244,7 @@ class ResultsPage(QWidget):
         self.summary_group.setMinimumWidth(0)
         self.summary_group.setMinimumHeight(54)
         self.summary_group.setMaximumWidth(16777215)
-        self.summary_group.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        self.summary_group.setSizePolicy(QSizePolicy.Maximum, QSizePolicy.Fixed)
         summary_group_layout = QHBoxLayout(self.summary_group)
         summary_group_layout.setContentsMargins(10, 8, 10, 8)
         summary_group_layout.setSpacing(8)
@@ -249,7 +255,7 @@ class ResultsPage(QWidget):
         self.summary_buttons_widget = QWidget(self.summary_group)
         self.summary_buttons_widget.setObjectName("summaryButtons")
         self.summary_buttons_widget.setMinimumHeight(36)
-        self.summary_buttons_widget.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Fixed)
+        self.summary_buttons_widget.setSizePolicy(QSizePolicy.Maximum, QSizePolicy.Fixed)
         self.summary_buttons_layout = QGridLayout(self.summary_buttons_widget)
         self.summary_buttons_layout.setContentsMargins(0, 0, 0, 0)
         self.summary_buttons_layout.setHorizontalSpacing(8)
@@ -259,12 +265,11 @@ class ResultsPage(QWidget):
         self.summary_filter_buttons: dict[str, QPushButton] = {}
         for mode, object_name in (
             ("all", "summaryChipAll"),
-            ("matched_exact", "summaryChipExact"),
-            ("matched_group", "summaryChipGroup"),
+            ("matched", "summaryChipMatched"),
             ("review", "summaryChipReview"),
             ("unmatched", "summaryChipUnmatched"),
         ):
-            button = ChipButton(summary_chip_palette(mode), min_width=84, horizontal_padding=14)
+            button = ChipButton(summary_chip_palette(mode), min_width=84, max_width=164, horizontal_padding=14)
             button.setObjectName(object_name)
             self.summary_filter_group.addButton(button)
             self.summary_filter_buttons[mode] = button
@@ -274,17 +279,23 @@ class ResultsPage(QWidget):
         self.summary_help_button.setText("!")
         self.summary_help_button.setCursor(Qt.PointingHandCursor)
         self.summary_help_button.setAutoRaise(True)
-        summary_group_layout.addWidget(self.summary_buttons_widget, 1)
+        summary_group_layout.addWidget(self.summary_buttons_widget, 0, Qt.AlignLeft | Qt.AlignVCenter)
         self.reflow_summary_buttons(width_hint=1520)
-        self.toolbar_groups_layout.insertWidget(0, self.summary_group, 3)
+        self.toolbar_groups_layout.insertWidget(0, self.summary_group, 0)
+        self.toolbar_groups_layout.addWidget(self.match_kind_filter_group, 0, Qt.AlignLeft)
         self.toolbar_groups_layout.addStretch(1)
 
         self.summary_actions = SummaryActionsBar()
-        self.summary_actions.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        self.summary_actions.setSizePolicy(QSizePolicy.Maximum, QSizePolicy.Fixed)
+        self.clear_filters_button = QPushButton()
+        self.clear_filters_button.setFixedWidth(156)
+        self.clear_filters_button.setFixedHeight(36)
         self.swap_button = QPushButton()
         self.swap_button.setFixedWidth(148)
         self.swap_button.setFixedHeight(36)
-        self.summary_row_layout.addWidget(self.summary_actions, 1)
+        self.summary_row_layout.addWidget(self.summary_actions, 0)
+        self.summary_row_layout.addStretch(1)
+        self.summary_row_layout.addWidget(self.clear_filters_button)
         self.summary_row_layout.addWidget(self.swap_button)
 
         self.locked_label = QLabel()
@@ -350,12 +361,11 @@ class ResultsPage(QWidget):
         elif width_hint < 1250:
             columns = 3
         else:
-            columns = 6
+            columns = 5
 
         ordered_widgets = [
             self.summary_filter_buttons["all"],
-            self.summary_filter_buttons["matched_exact"],
-            self.summary_filter_buttons["matched_group"],
+            self.summary_filter_buttons["matched"],
             self.summary_filter_buttons["review"],
             self.summary_filter_buttons["unmatched"],
             self.summary_help_button,
@@ -379,7 +389,8 @@ class ResultsPage(QWidget):
         )
         heights: dict[str, int] = {}
         for mode, grid, proxy in grids:
-            visible_rows = proxy.rowCount() if proxy else 0
+            table_model = grid.table.model()
+            visible_rows = table_model.rowCount() if table_model is not None else (proxy.rowCount() if proxy else 0)
             table_height = self._table_target_height(grid.table, visible_rows)
             panel_height = table_height + self._grid_panel_extra_height(grid)
             grid.table.setMinimumHeight(table_height)
@@ -417,7 +428,11 @@ class ResultsPage(QWidget):
         self.summary_row_layout.setDirection(QBoxLayout.TopToBottom if width < 1120 else QBoxLayout.LeftToRight)
         self.summary_group.setMinimumWidth(0)
         self.summary_group.setMaximumWidth(16777215)
+        self.summary_group.setSizePolicy(QSizePolicy.Maximum, QSizePolicy.Fixed)
+        self.summary_buttons_widget.setSizePolicy(QSizePolicy.Maximum, QSizePolicy.Fixed)
         self.toolbar_groups_layout.setDirection(QBoxLayout.TopToBottom if width < 1320 else QBoxLayout.LeftToRight)
+        self.match_kind_filter_group.setMinimumWidth(0)
+        self.match_kind_filter_group.setMaximumWidth(16777215)
         self.filter_controls_layout.setDirection(QBoxLayout.TopToBottom if width < 1320 else QBoxLayout.LeftToRight)
         self.reflow_summary_buttons(width)
         self.update_grid_heights(active_grid_mode, system_proxy, bank_proxy)

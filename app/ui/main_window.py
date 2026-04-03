@@ -5,6 +5,7 @@ import logging
 from PySide6.QtCore import QSize, QThread, Qt, QTimer, Slot
 from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import (
+    QGraphicsOpacityEffect,
     QMainWindow,
     QSizePolicy,
     QStackedWidget,
@@ -20,7 +21,9 @@ from app.ui.components import (
     FilePickerPanel,
 )
 from app.ui.config import (
+    FLOW_FILTER_OPTIONS,
     date_filter_text,
+    match_kind_text,
     summary_help_tooltip,
 )
 from app.ui.main_window_actions_mixin import MainWindowActionsMixin
@@ -60,6 +63,8 @@ class MainWindow(
         self.bank_model: TransactionsTableModel | None = None
         self.system_proxy: TransactionsFilterProxyModel | None = None
         self.bank_proxy: TransactionsFilterProxyModel | None = None
+        self.system_display_model = None
+        self.bank_display_model = None
         self._active_grid_mode = "bank"
         self._date_filter_active = False
         self._filter_overlay_active = False
@@ -125,12 +130,18 @@ class MainWindow(
         self.status_buttons = self.results_page.status_buttons
         self.flow_filter_group = self.results_page.flow_filter_group
         self.flow_group_label = self.results_page.flow_group_label
-        self.flow_group = self.results_page.flow_group
-        self.flow_buttons = self.results_page.flow_buttons
+        self.flow_filter_combo = self.results_page.flow_filter_combo
         self.filter_controls_layout = self.results_page.filter_controls_layout
         self.reference_filter_group = self.results_page.reference_filter_group
         self.reference_filter_label = self.results_page.reference_filter_label
         self.reference_filter_combo = self.results_page.reference_filter_combo
+        self.match_kind_filter_group = self.results_page.match_kind_filter_group
+        self.match_kind_filter_label = self.results_page.match_kind_filter_label
+        self.match_kind_group = self.results_page.match_kind_group
+        self.match_kind_buttons = self.results_page.match_kind_buttons
+        self.match_kind_opacity = QGraphicsOpacityEffect(self.match_kind_filter_group)
+        self.match_kind_opacity.setOpacity(1.0)
+        self.match_kind_filter_group.setGraphicsEffect(self.match_kind_opacity)
         self.date_filter_group = self.results_page.date_filter_group
         self.date_filter_label = self.results_page.date_filter_label
         self.date_range_separator = self.results_page.date_range_separator
@@ -148,6 +159,7 @@ class MainWindow(
         self.history_button = self.summary_actions.history_button
         self.export_button = self.summary_actions.export_button
         self.attach_statement_checkbox = self.summary_actions.attach_statement_checkbox
+        self.clear_filters_button = self.results_page.clear_filters_button
         self.swap_button = self.results_page.swap_button
         self.locked_label = self.results_page.locked_label
         self.results_content = self.results_page.results_content
@@ -178,20 +190,24 @@ class MainWindow(
 
         for button in self.status_buttons.values():
             button.clicked.connect(lambda _checked=False: self._schedule_filters(with_loading=True))
-        for button in self.flow_buttons.values():
-            button.clicked.connect(lambda _checked=False: self._schedule_filters(with_loading=True))
         for button in self.summary_filter_buttons.values():
+            button.clicked.connect(lambda _checked=False: self._schedule_filters(with_loading=True))
+        for button in self.match_kind_buttons.values():
             button.clicked.connect(lambda _checked=False: self._schedule_filters(with_loading=True))
 
         self.reference_filter_combo.currentIndexChanged.connect(lambda _index: self._schedule_filters(with_loading=True))
+        self.flow_filter_combo.currentIndexChanged.connect(lambda _index: self._schedule_filters(with_loading=True))
         for widget in (self.date_from_edit, self.date_to_edit):
             widget.dateChanged.connect(self._on_date_filter_changed)
         self.date_clear_button.clicked.connect(self._reset_date_filter)
         self.quick_search_edit.textChanged.connect(self._sync_quick_search)
+        self.clear_filters_button.clicked.connect(self._reset_all_filters)
         self.swap_button.clicked.connect(self._swap_grids)
 
         self.system_grid.table.action_requested.connect(lambda row: self._open_pair("system", row))
         self.bank_grid.table.action_requested.connect(lambda row: self._open_pair("bank", row))
+        self.system_grid.table.toggle_requested.connect(lambda row: self._toggle_group_row("system", row))
+        self.bank_grid.table.toggle_requested.connect(lambda row: self._toggle_group_row("bank", row))
         self.system_grid.search.textChanged.connect(self._filter_system_grid)
         self.bank_grid.search.textChanged.connect(self._filter_bank_grid)
         self.system_grid.columns.currentIndexChanged.connect(self._filter_system_grid)
@@ -267,6 +283,7 @@ class MainWindow(
         self.language_label.setText(tr(self.current_language, "language"))
         self.history_button.setText(tr(self.current_language, "history_button"))
         self.reference_filter_label.setText(tr(self.current_language, "reference_filter"))
+        self.match_kind_filter_label.setText(match_kind_text(self.current_language, "caption"))
         self.date_filter_label.setText(date_filter_text(self.current_language, "caption"))
         self.date_range_separator.setText("~")
         self.system_choose_button.setText(tr(self.current_language, "choose_file"))
@@ -274,6 +291,7 @@ class MainWindow(
         self.scan_button.setText(tr(self.current_language, "scan"))
         self.export_button.setText(self._export_button_label())
         self.attach_statement_checkbox.setText(tr(self.current_language, "attach_statement"))
+        self.clear_filters_button.setText(tr(self.current_language, "clear_filters"))
         self.date_clear_button.setText(date_filter_text(self.current_language, "reset"))
         self.quick_search_edit.setPlaceholderText(self._quick_search_placeholder())
         self.metadata_title.setText(tr(self.current_language, "bank_info"))
@@ -287,10 +305,14 @@ class MainWindow(
         self.status_buttons["matched_group"].setText(tr(self.current_language, "status_matched_group"))
         self.status_buttons["review"].setText(tr(self.current_language, "status_review"))
         self.status_buttons["unmatched"].setText(tr(self.current_language, "status_unmatched"))
-        self.flow_buttons["all"].setText(tr(self.current_language, "flow_all"))
-        self.flow_buttons["income"].setText(tr(self.current_language, "flow_income"))
-        self.flow_buttons["expense"].setText(tr(self.current_language, "flow_expense"))
-        self.flow_buttons["tax"].setText(tr(self.current_language, "flow_tax"))
+        current_flow_value = self.flow_filter_combo.currentData() or "all"
+        self.flow_filter_combo.blockSignals(True)
+        self.flow_filter_combo.clear()
+        for value, translation_key in FLOW_FILTER_OPTIONS:
+            self.flow_filter_combo.addItem(tr(self.current_language, translation_key), value)
+        flow_index = self.flow_filter_combo.findData(current_flow_value)
+        self.flow_filter_combo.setCurrentIndex(flow_index if flow_index >= 0 else 0)
+        self.flow_filter_combo.blockSignals(False)
         self.system_grid.title.setText(tr(self.current_language, "system_grid"))
         self.bank_grid.title.setText(tr(self.current_language, "bank_grid"))
         self.summary_help_button.setToolTip(summary_help_tooltip(self.current_language))
@@ -300,12 +322,17 @@ class MainWindow(
             label.setText(tr(self.current_language, key))
         self._refresh_history_headers()
         self._populate_reference_filter_options()
+        self._populate_match_kind_filter_buttons()
         self.overlay.set_badge(tr(self.current_language, "loading_badge"))
         self.overlay.set_hint(tr(self.current_language, "loading_hint"))
         if self.system_model:
             self.system_model.set_language(self.current_language)
         if self.bank_model:
             self.bank_model.set_language(self.current_language)
+        if self.system_display_model:
+            self.system_display_model.set_language(self.current_language)
+        if self.bank_display_model:
+            self.bank_display_model.set_language(self.current_language)
         self._populate_search_columns()
         if self.system_model and self.bank_model:
             self._apply_grid_column_widths()
@@ -369,10 +396,12 @@ class MainWindow(
         self.status_filter_group.setVisible(False)
         self.flow_filter_group.setVisible(has_result)
         self.reference_filter_group.setVisible(has_result)
+        self.match_kind_filter_group.setVisible(has_result)
         self.date_filter_group.setVisible(has_result)
         self.quick_search_group.setVisible(has_result)
         self.summary_group.setVisible(has_result)
         self.summary_actions.setVisible(has_result)
+        self.clear_filters_button.setVisible(has_result)
         self.swap_button.setVisible(has_result)
         self.export_button.setEnabled(not locked and has_result)
         for card in self.metric_cards.values():
@@ -382,20 +411,23 @@ class MainWindow(
         self.results_card.setMaximumHeight(16777215)
         self.metadata_card.setMaximumHeight(16777215)
         self.swap_button.setEnabled(not locked and has_result)
+        self.clear_filters_button.setEnabled(not locked and has_result)
         self.reference_filter_combo.setEnabled(not locked)
         self.date_from_edit.setEnabled(not locked and has_result)
         self.date_to_edit.setEnabled(not locked and has_result)
         self.date_clear_button.setEnabled(not locked and has_result)
         for button in self.status_buttons.values():
             button.setEnabled(not locked)
+        for button in self.match_kind_buttons.values():
+            button.setEnabled(not locked)
         for button in self.summary_filter_buttons.values():
             button.setEnabled(not locked)
-        for button in self.flow_buttons.values():
-            button.setEnabled(not locked)
+        self.flow_filter_combo.setEnabled(not locked)
         self._update_export_controls_state(locked)
         self.results_card.updateGeometry()
         self.metadata_card.updateGeometry()
         self.top_section.updateGeometry()
+        self._update_match_kind_visibility()
 
     def _update_export_controls_state(self, locked: bool) -> None:
         has_result = self.current_result is not None
